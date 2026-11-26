@@ -1,0 +1,3444 @@
+<!DOCTYPE html>
+<html lang="es-AR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#111827" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Acompañame" />
+  <title>Acompañame - Centro de Monitoreo | Villa Regina</title>
+
+  <!-- Tipografía Inter de alta legibilidad para celulares y adultos mayores -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    if (window.tailwind) {
+      tailwind.config = {
+        theme: {
+          extend: {
+            fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] },
+            colors: {
+              ink: '#111827',
+              panic: '#DC2626',
+              safe: '#059669',
+              warn: '#EAB308'
+            }
+          }
+        }
+      };
+    }
+  </script>
+
+  <!-- Leaflet.js CDN (Mapa interactivo centrado en Villa Regina, Río Negro) -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+
+  <!-- Chart.js CDN (Gráficos estadísticos anónimos en Panel Creador) -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+
+  <style>
+    body {
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      background-color: #FFFFFF;
+      color: #111827;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .leaflet-container {
+      z-index: 10;
+      font-family: 'Inter', system-ui, sans-serif;
+    }
+    /* Marcadores del mapa en vivo */
+    .op-pin {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 9999px;
+      border: 3px solid #FFFFFF;
+      box-shadow: 0 4px 12px rgba(17, 24, 39, 0.45);
+      font-weight: 900;
+      font-size: 13px;
+    }
+    @keyframes pulseRedRing {
+      0% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.85); }
+      70% { box-shadow: 0 0 0 18px rgba(220, 38, 38, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0); }
+    }
+    .pin-pulse-red {
+      animation: pulseRedRing 1.3s infinite;
+    }
+    @keyframes flashBanner {
+      0%, 100% { background-color: #DC2626; }
+      50% { background-color: #991B1B; }
+    }
+    .panic-banner-flash {
+      animation: flashBanner 0.95s infinite;
+    }
+    @keyframes gentleChatAlert {
+      0%, 100% { border-color: #DC2626; }
+      50% { border-color: #111827; }
+    }
+    .chat-unread-ring {
+      animation: gentleChatAlert 1.2s infinite;
+    }
+  </style>
+</head>
+<body class="bg-white text-ink antialiased overflow-x-hidden min-h-screen flex flex-col">
+
+  <!-- ======================================================================= -->
+  <!-- NOTIFICACIONES TOAST Y MODAL PERSONALIZADO (SIN ALERT NI CONFIRM)       -->
+  <!-- ======================================================================= -->
+  <div id="toast-container" class="fixed top-4 left-1/2 -translate-x-1/2 z-[95] w-[92%] max-w-md pointer-events-none flex flex-col gap-2"></div>
+
+  <div id="app-modal" class="hidden fixed inset-0 z-[90] bg-black/75 flex items-center justify-center p-4">
+    <div class="bg-white text-ink w-full max-w-md rounded-3xl border-2 border-ink p-6 shadow-2xl">
+      <h3 id="app-modal-title" class="text-xl font-black mb-2">Confirmación</h3>
+      <p id="app-modal-body" class="text-sm sm:text-base text-gray-700 font-medium mb-6 leading-relaxed"></p>
+      <div id="app-modal-actions" class="flex flex-col sm:flex-row gap-2.5 justify-end"></div>
+    </div>
+  </div>
+
+  <!-- ======================================================================= -->
+  <!-- MODAL DE ACCESO RESTRINGIDO POR CÓDIGO (SIN PISTAS EN PANTALLA)         -->
+  <!-- ======================================================================= -->
+  <div id="access-modal" class="hidden fixed inset-0 z-[85] bg-black/80 flex items-center justify-center p-4">
+    <div class="bg-white text-ink w-full max-w-sm rounded-3xl border-2 border-ink p-6 shadow-2xl space-y-5">
+      <div class="flex items-start justify-between gap-3">
+        <div class="flex items-center gap-3">
+          <span class="w-11 h-11 rounded-2xl bg-ink text-white flex items-center justify-center text-xl shrink-0">🔒</span>
+          <div>
+            <h2 class="text-lg font-black leading-tight">Acceso Restringido</h2>
+            <p class="text-xs font-semibold text-gray-600">Centro de Monitoreo • Personal Autorizado</p>
+          </div>
+        </div>
+        <button type="button" onclick="App.closeAccessModal()" aria-label="Cerrar"
+          class="w-10 h-10 rounded-xl border-2 border-gray-300 font-black text-gray-700 hover:bg-gray-100 flex items-center justify-center">✕</button>
+      </div>
+
+      <form onsubmit="App.submitAccessCode(event)" class="space-y-4">
+        <div>
+          <label for="access-operator-name" class="block text-xs font-extrabold uppercase tracking-wide text-gray-700 mb-1.5">
+            Nombre del Operador (Opcional)
+          </label>
+          <input id="access-operator-name" type="text" autocomplete="off" placeholder="Ej: Guardia Turno Noche"
+            class="w-full min-h-[48px] px-4 rounded-2xl border-2 border-gray-300 text-base font-semibold focus:border-ink focus:outline-none" />
+        </div>
+
+        <div>
+          <label for="access-code-input" class="block text-xs font-extrabold uppercase tracking-wide text-gray-700 mb-1.5">
+            Código de Acceso
+          </label>
+          <div class="relative">
+            <input id="access-code-input" type="password" required autocomplete="off" placeholder="Ingresá tu código"
+              class="w-full min-h-[52px] pl-4 pr-12 rounded-2xl border-2 border-ink text-base font-bold tracking-wider focus:outline-none focus:ring-2 focus:ring-ink" />
+            <button type="button" onclick="App.toggleAccessPassword()" aria-label="Mostrar u ocultar código"
+              class="absolute right-2 top-1/2 -translate-y-1/2 w-10 h-10 rounded-xl text-gray-600 hover:bg-gray-100 flex items-center justify-center">
+              <span id="access-eye-icon">👁️</span>
+            </button>
+          </div>
+          <p id="access-error-msg" class="hidden mt-2 text-xs font-extrabold text-panic">
+            Código incorrecto. Verificá e intentá nuevamente.
+          </p>
+        </div>
+
+        <button type="submit"
+          class="w-full min-h-[54px] rounded-2xl bg-ink text-white font-black text-base tracking-wide active:scale-[0.98] transition">
+          INGRESAR
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- ======================================================================= -->
+  <!-- 1. INTERFAZ DEL VECINO (ÚNICA VISTA PÚBLICA — CERO BOTONES DE ADMIN/OP) -->
+  <!-- ======================================================================= -->
+  <div id="shell-vecino" class="flex-1 flex flex-col">
+
+    <!-- Cabecera fija Vecino + Indicador Nube + Candado discreto -->
+    <header class="sticky top-0 z-30 bg-ink text-white border-b-2 border-black shadow-sm">
+      <div class="max-w-lg mx-auto px-4 py-3 flex items-center justify-between gap-2">
+        <div class="flex items-center gap-2.5 min-w-0">
+          <span class="w-9 h-9 rounded-xl bg-safe text-white font-black text-xl flex items-center justify-center shrink-0">A</span>
+          <div class="min-w-0">
+            <h1 class="text-base font-black tracking-tight leading-none truncate">ACOMPAÑAME</h1>
+            <p class="text-[11px] font-semibold text-gray-300 leading-tight truncate">Centro de Monitoreo • Villa Regina</p>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-2 shrink-0">
+          <span id="vecino-conn-pill" class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-gray-800 border border-gray-700 text-[11px] font-extrabold text-gray-100">
+            <span id="vecino-conn-dot" class="w-2 h-2 rounded-full bg-warn"></span>
+            <span id="vecino-conn-text">Conectando...</span>
+          </span>
+          <!-- Candado discreto para acceso de Operador / Creador -->
+          <button type="button" onclick="App.openAccessModal()" aria-label="Acceso restringido" title="Acceso restringido"
+            class="w-10 h-10 rounded-xl bg-gray-800/80 hover:bg-gray-700 text-gray-300 flex items-center justify-center text-sm transition">
+            🔒
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Aviso si hay error de Firebase (ej. 401 reglas bloqueadas o sin internet) -->
+    <div id="vecino-conn-error-banner" class="hidden bg-red-50 border-b-2 border-panic px-4 py-2.5">
+      <p id="vecino-conn-error-text" class="max-w-lg mx-auto text-xs font-extrabold text-panic leading-snug"></p>
+    </div>
+
+    <!-- Contenido Principal del Vecino -->
+    <main class="flex-1 w-full max-w-lg mx-auto px-4 pt-4 pb-28">
+
+      <!-- Indicador discreto de PÁNICO SILENCIOSO (Cero ruido, cero vibración, cero flashes) -->
+      <div id="silent-panic-box" class="hidden mb-4 rounded-2xl bg-gray-900 text-gray-100 p-4 border border-gray-700 space-y-2.5">
+        <div class="flex items-center justify-between gap-2">
+          <div class="flex items-center gap-2">
+            <span class="w-2.5 h-2.5 rounded-full bg-panic"></span>
+            <span id="panic-box-title" class="text-sm font-extrabold">Alerta silenciosa activa</span>
+          </div>
+          <span id="panic-audio-timer" class="text-xs font-mono font-bold text-gray-300">0s / 10s</span>
+        </div>
+        <p id="panic-box-desc" class="text-xs text-gray-300 leading-snug">
+          Tu teléfono permanece en silencio. El Centro de Monitoreo recibió tu ubicación y está recibiendo 10 segundos de audio ambiental.
+        </p>
+        <div class="w-full h-2 bg-gray-700 rounded-full overflow-hidden">
+          <div id="panic-audio-bar" class="h-full bg-panic transition-all duration-300" style="width: 0%"></div>
+        </div>
+        <div class="flex justify-end">
+          <button type="button" onclick="App.hideSilentPanicBox()" class="text-[11px] underline text-gray-400 font-semibold py-1 px-2">
+            Ocultar aviso
+          </button>
+        </div>
+      </div>
+
+      <!-- ===================== PESTAÑA 1: INICIO ===================== -->
+      <section id="vtab-inicio" class="vtab-panel space-y-4">
+
+        <!-- Tarjeta Institucional con Foto/Emblema de Jacinto y Estado -->
+        <div class="rounded-3xl border-2 border-ink bg-white p-4 flex items-center gap-3.5 shadow-sm">
+          <div class="w-16 h-16 rounded-full border-2 border-ink overflow-hidden shrink-0 bg-ink flex items-center justify-center">
+            <img id="jacinto-avatar-img" src="" alt="Jacinto" class="hidden w-full h-full object-cover"
+              onerror="this.classList.add('hidden');document.getElementById('jacinto-avatar-svg').classList.remove('hidden');" />
+            <svg id="jacinto-avatar-svg" class="w-10 h-10 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 3l7 4v5c0 4.5-3 8.2-7 9-4-.8-7-4.5-7-9V7l7-4z"/>
+              <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4"/>
+            </svg>
+          </div>
+          <div class="min-w-0 flex-1">
+            <p id="vecino-inst-label" class="text-xs font-extrabold uppercase tracking-wider text-gray-600 truncate">
+              Programa Vecinal • Jacinto
+            </p>
+            <h2 class="text-xl font-black text-ink leading-tight truncate">
+              Hola, <span id="vecino-greeting">Vecino/a</span>
+            </h2>
+            <p id="vecino-cloud-subline" class="text-xs font-bold text-gray-600 mt-0.5 truncate">
+              Villa Regina • Conectando a la nube...
+            </p>
+          </div>
+        </div>
+
+        <!-- ESTADO A: INICIO NORMAL (2 BOTONES GIGANTES) -->
+        <div id="vecino-idle-view" class="space-y-4">
+          <!-- Botón Gigante 1: ACOMPAÑAME -->
+          <button type="button" onclick="App.openStartTripForm()"
+            class="w-full min-h-[158px] rounded-3xl bg-safe text-white p-6 text-left border-4 border-emerald-900 shadow-lg active:scale-[0.98] transition flex flex-col justify-between">
+            <div class="flex items-center justify-between w-full">
+              <span class="w-14 h-14 rounded-2xl bg-white text-safe flex items-center justify-center shrink-0">
+                <svg class="w-8 h-8" fill="none" stroke="currentColor" stroke-width="2.6" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z"/>
+                </svg>
+              </span>
+              <span class="text-xs font-black uppercase tracking-wider px-3 py-1 rounded-full bg-emerald-900/60 text-white">
+                Seguimiento GPS
+              </span>
+            </div>
+            <div class="mt-4">
+              <span class="block text-3xl font-black tracking-tight">ACOMPAÑAME</span>
+              <span class="block text-base text-emerald-50 font-semibold mt-1 leading-snug">
+                Compartí tu recorrido con el Centro de Monitoreo hasta confirmar que llegaste bien
+              </span>
+            </div>
+          </button>
+
+          <!-- Botón Gigante 2: EMERGENCIA -->
+          <button type="button" onclick="App.triggerSilentPanic()"
+            class="w-full min-h-[150px] rounded-3xl bg-panic text-white p-6 text-left border-4 border-red-900 shadow-lg active:scale-[0.98] transition flex flex-col justify-between">
+            <div class="flex items-center justify-between w-full">
+              <span class="w-14 h-14 rounded-2xl bg-white text-panic flex items-center justify-center shrink-0">
+                <svg class="w-8 h-8" fill="none" stroke="currentColor" stroke-width="2.8" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"/>
+                </svg>
+              </span>
+              <span class="text-xs font-black uppercase tracking-wider px-3 py-1 rounded-full bg-red-900/70 text-white">
+                100% Silencioso
+              </span>
+            </div>
+            <div class="mt-4">
+              <span class="block text-3xl font-black tracking-tight">EMERGENCIA</span>
+              <span class="block text-base text-red-100 font-semibold mt-1 leading-snug">
+                Envía alerta silenciosa, tu ubicación GPS y 10s de audio al Centro sin hacer ruido
+              </span>
+            </div>
+          </button>
+
+          <!-- Sugerencia si aún no cargó contactos -->
+          <div id="home-no-contacts-hint" class="hidden rounded-2xl bg-amber-50 border-2 border-warn p-4 flex items-center justify-between gap-3">
+            <p class="text-xs sm:text-sm font-bold text-amber-950 leading-snug">
+              Todavía no cargaste <strong>Contactos de Emergencia</strong>. Cargalos para que el Centro pueda avisar a tu familia si lo necesitás.
+            </p>
+            <button type="button" onclick="App.switchVecinoTab('contactos')"
+              class="min-h-[44px] px-3.5 rounded-xl bg-ink text-white font-black text-xs shrink-0">
+              Cargar
+            </button>
+          </div>
+
+          <!-- Nota de privacidad legal -->
+          <div class="rounded-2xl bg-gray-100 border-2 border-gray-300 p-4 flex items-start gap-3">
+            <span class="text-xl leading-none mt-0.5">🛡️</span>
+            <p class="text-sm text-gray-800 font-medium leading-snug">
+              <strong class="font-extrabold">Privacidad garantizada:</strong> tu ubicación GPS solo se comparte durante el viaje. Al tocar <strong>"Llegué bien"</strong> se borran tus coordenadas de inmediato.
+            </p>
+          </div>
+        </div>
+
+        <!-- ESTADO B: FORMULARIO PEDIR ACOMPAÑAMIENTO -->
+        <div id="vecino-start-form" class="hidden rounded-3xl border-2 border-ink bg-white p-5 space-y-5 shadow-lg">
+          <div class="flex items-center justify-between border-b-2 border-gray-200 pb-3">
+            <div>
+              <h3 class="text-xl font-black text-ink">Pedir acompañamiento</h3>
+              <p class="text-xs font-semibold text-gray-600">Completá los datos de tu recorrido</p>
+            </div>
+            <button type="button" onclick="App.closeStartTripForm()" aria-label="Cancelar"
+              class="min-w-[44px] min-h-[44px] rounded-2xl border-2 border-gray-300 font-black text-lg text-ink flex items-center justify-center">✕</button>
+          </div>
+
+          <!-- Paso rápido si falta Nombre o WhatsApp en el perfil -->
+          <div id="inline-profile-block" class="hidden rounded-2xl bg-amber-50 border-2 border-warn p-4 space-y-3">
+            <p class="text-xs font-black uppercase text-amber-950">Completá tus datos para que podamos asistirte</p>
+            <div>
+              <label for="inline-name" class="block text-sm font-extrabold text-ink mb-1">Tu Nombre y Apellido *</label>
+              <input id="inline-name" type="text" placeholder="Ej: Lucía Fernández"
+                class="w-full min-h-[48px] px-4 rounded-2xl border-2 border-ink bg-white text-base font-bold" />
+            </div>
+            <div>
+              <label for="inline-whatsapp" class="block text-sm font-extrabold text-ink mb-1">Tu WhatsApp / Teléfono *</label>
+              <input id="inline-whatsapp" type="tel" placeholder="Ej: 2984 551234"
+                class="w-full min-h-[48px] px-4 rounded-2xl border-2 border-ink bg-white text-base font-bold" />
+            </div>
+          </div>
+
+          <!-- 1. Modo de viaje -->
+          <div>
+            <label class="block text-base font-extrabold text-ink mb-2">1. ¿Cómo viajás?</label>
+            <div class="grid grid-cols-2 gap-2">
+              <button type="button" data-mode="Voy caminando" onclick="App.selectTripMode('Voy caminando')"
+                class="mode-btn min-h-[58px] p-3 rounded-2xl border-2 border-ink bg-ink text-white font-bold text-sm text-left flex items-center gap-2">
+                <span class="text-lg">🚶</span><span>Voy caminando</span>
+              </button>
+              <button type="button" data-mode="Voy en bici" onclick="App.selectTripMode('Voy en bici')"
+                class="mode-btn min-h-[58px] p-3 rounded-2xl border-2 border-gray-300 bg-white text-ink font-bold text-sm text-left flex items-center gap-2">
+                <span class="text-lg">🚲</span><span>Voy en bici</span>
+              </button>
+              <button type="button" data-mode="Voy en cole" onclick="App.selectTripMode('Voy en cole')"
+                class="mode-btn min-h-[58px] p-3 rounded-2xl border-2 border-gray-300 bg-white text-ink font-bold text-sm text-left flex items-center gap-2">
+                <span class="text-lg">🚌</span><span>Voy en cole</span>
+              </button>
+              <button type="button" data-mode="Vuelvo del trabajo" onclick="App.selectTripMode('Vuelvo del trabajo')"
+                class="mode-btn min-h-[58px] p-3 rounded-2xl border-2 border-gray-300 bg-white text-ink font-bold text-sm text-left flex items-center gap-2">
+                <span class="text-lg">💼</span><span>Vuelvo del trabajo</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- 2. Barrio de Villa Regina y 3. Destino -->
+          <div class="space-y-3">
+            <div>
+              <label for="trip-barrio" class="block text-base font-extrabold text-ink mb-1.5">2. Barrio (Villa Regina)</label>
+              <select id="trip-barrio" class="w-full min-h-[52px] px-4 rounded-2xl border-2 border-ink text-base font-bold bg-white">
+                <option value="Barrio Este">Barrio Este</option>
+                <option value="Centro">Centro</option>
+                <option value="Villa Obrera">Villa Obrera</option>
+                <option value="Barrio Nuevo">Barrio Nuevo</option>
+                <option value="Progreso">Progreso</option>
+                <option value="Belgrano">Belgrano</option>
+                <option value="Malvinas">Malvinas</option>
+                <option value="Pretto">Pretto</option>
+                <option value="El Sauce">El Sauce</option>
+                <option value="Otro">Otro</option>
+              </select>
+            </div>
+            <div>
+              <label for="trip-destination" class="block text-base font-extrabold text-ink mb-1.5">3. Destino</label>
+              <input id="trip-destination" type="text" value="Mi casa" placeholder="Ej: Mi casa"
+                class="w-full min-h-[52px] px-4 rounded-2xl border-2 border-ink text-base font-bold" />
+            </div>
+          </div>
+
+          <!-- 4. Tiempo estimado -->
+          <div>
+            <label class="block text-base font-extrabold text-ink mb-2">4. Tiempo estimado</label>
+            <div class="grid grid-cols-4 gap-2">
+              <button type="button" data-eta="5" onclick="App.selectTripEta(5)" class="eta-btn min-h-[48px] rounded-2xl border-2 border-gray-300 bg-white text-ink font-extrabold text-sm">5 min</button>
+              <button type="button" data-eta="10" onclick="App.selectTripEta(10)" class="eta-btn min-h-[48px] rounded-2xl border-2 border-gray-300 bg-white text-ink font-extrabold text-sm">10 min</button>
+              <button type="button" data-eta="15" onclick="App.selectTripEta(15)" class="eta-btn min-h-[48px] rounded-2xl border-2 border-ink bg-ink text-white font-extrabold text-sm">15 min</button>
+              <button type="button" data-eta="20" onclick="App.selectTripEta(20)" class="eta-btn min-h-[48px] rounded-2xl border-2 border-gray-300 bg-white text-ink font-extrabold text-sm">20 min</button>
+              <button type="button" data-eta="30" onclick="App.selectTripEta(30)" class="eta-btn min-h-[48px] rounded-2xl border-2 border-gray-300 bg-white text-ink font-extrabold text-sm">30 min</button>
+              <button type="button" data-eta="45" onclick="App.selectTripEta(45)" class="eta-btn min-h-[48px] rounded-2xl border-2 border-gray-300 bg-white text-ink font-extrabold text-sm">45 min</button>
+              <button type="button" data-eta="60" onclick="App.selectTripEta(60)" class="eta-btn col-span-2 min-h-[48px] rounded-2xl border-2 border-gray-300 bg-white text-ink font-extrabold text-sm">60 min</button>
+            </div>
+          </div>
+
+          <!-- 5. Consentimiento legal obligatorio cada vez -->
+          <label for="trip-legal-check"
+            class="flex items-start gap-3.5 p-4 rounded-2xl border-2 border-ink bg-gray-50 cursor-pointer select-none">
+            <input id="trip-legal-check" type="checkbox" onchange="App.updateStartTripBtn()"
+              class="mt-1 w-6 h-6 accent-black rounded shrink-0 cursor-pointer" />
+            <span class="text-sm sm:text-base font-extrabold text-ink leading-snug">
+              Acepto compartir mi ubicación solo durante este viaje
+              <span class="block text-xs font-semibold text-gray-600 mt-1">Al tocar "Llegué bien", tus coordenadas se eliminan automáticamente.</span>
+            </span>
+          </label>
+
+          <button type="button" id="btn-start-trip" onclick="App.confirmStartTrip()" disabled
+            class="w-full min-h-[60px] rounded-2xl bg-gray-300 text-gray-500 font-black text-lg transition cursor-not-allowed">
+            INICIAR ACOMPAÑAMIENTO
+          </button>
+        </div>
+
+        <!-- ESTADO C: VIAJE ACTIVO DEL VECINO -->
+        <div id="vecino-active-view" class="hidden space-y-4">
+          <div class="rounded-3xl border-2 border-ink bg-white p-5 shadow-md space-y-4">
+            <div class="flex items-center justify-between gap-2">
+              <span id="v-active-badge" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-safe text-white text-xs font-black uppercase">
+                ● EN VIAJE
+              </span>
+              <span id="v-active-mode" class="text-xs font-extrabold text-gray-600">Voy caminando</span>
+            </div>
+
+            <div class="text-center py-3 border-y-2 border-gray-100">
+              <p class="text-xs font-extrabold uppercase tracking-wider text-gray-500">Tiempo restante estimado</p>
+              <div id="v-active-countdown" class="text-5xl font-black tracking-tight text-ink tabular-nums my-1">15:00</div>
+              <p class="text-base font-extrabold text-ink">
+                Destino: <span id="v-active-dest">Mi casa</span> • <span id="v-active-barrio">Barrio Este</span>
+              </p>
+            </div>
+
+            <!-- Estado GPS real en vivo -->
+            <div class="rounded-2xl bg-gray-50 border border-gray-200 p-3.5 flex items-center justify-between gap-2">
+              <div class="min-w-0">
+                <p id="v-gps-status-label" class="text-xs font-extrabold text-ink">📡 Esperando permiso/señal GPS...</p>
+                <p id="v-gps-coords" class="text-[11px] font-mono text-gray-600 truncate">Aceptá el permiso de ubicación en tu celular</p>
+              </div>
+              <button type="button" onclick="App.forceGpsUpdate()"
+                class="min-h-[42px] px-3 rounded-xl border-2 border-ink bg-white text-ink text-xs font-extrabold shrink-0">
+                📍 GPS
+              </button>
+            </div>
+          </div>
+
+          <!-- Chat en Vivo con el Operador (con alerta visual si llega mensaje nuevo) -->
+          <div id="v-chat-card" class="rounded-3xl border-2 border-ink bg-white p-4 space-y-3 transition">
+            <div class="flex items-center justify-between gap-2">
+              <h3 class="text-sm font-black uppercase tracking-wide text-ink">💬 Chat con el Operador</h3>
+              <span id="v-chat-unread-badge" class="hidden px-2.5 py-1 rounded-full bg-panic text-white text-[11px] font-black uppercase">
+                📩 Mensaje del Operador
+              </span>
+              <span id="v-chat-live-tag" class="text-xs font-extrabold text-safe">● En vivo</span>
+            </div>
+            <div id="v-chat-list" class="max-h-52 overflow-y-auto space-y-2 p-2.5 rounded-2xl bg-gray-50 border border-gray-200 text-sm"></div>
+            <div class="flex flex-wrap gap-1.5">
+              <button type="button" onclick="App.sendVecinoChat('Sí, todo bien 👍')" class="px-3 py-2 rounded-xl bg-gray-100 border border-gray-300 text-xs font-extrabold text-ink">Todo bien 👍</button>
+              <button type="button" onclick="App.sendVecinoChat('Me demoro unos minutos más')" class="px-3 py-2 rounded-xl bg-gray-100 border border-gray-300 text-xs font-extrabold text-ink">Me demoro un poco</button>
+              <button type="button" onclick="App.sendVecinoChat('Por favor llamame')" class="px-3 py-2 rounded-xl bg-red-50 border border-red-300 text-xs font-extrabold text-panic">Llamame</button>
+            </div>
+            <form onsubmit="App.handleVecinoChatForm(event)" class="flex gap-2">
+              <input id="v-chat-input" type="text" onfocus="App.markVecinoChatRead()" placeholder="Escribí al operador..."
+                class="flex-1 min-h-[48px] px-3.5 rounded-2xl border-2 border-ink text-base font-semibold focus:outline-none" />
+              <button type="submit" class="min-h-[48px] px-4 rounded-2xl bg-ink text-white font-black text-sm">Enviar</button>
+            </form>
+          </div>
+
+          <!-- Botón Verde Gigante: LLEGUÉ BIEN -->
+          <button type="button" onclick="App.vecinoCompleteTrip()"
+            class="w-full min-h-[84px] rounded-3xl bg-safe text-white font-black text-2xl tracking-tight border-4 border-emerald-900 shadow-lg active:scale-[0.98] transition flex items-center justify-center gap-2.5">
+            <span>✅</span>
+            <span>LLEGUÉ BIEN</span>
+          </button>
+
+          <!-- Botón Rojo Silencioso siempre accesible durante el viaje -->
+          <button type="button" onclick="App.triggerSilentPanic()"
+            class="w-full min-h-[68px] rounded-3xl bg-panic text-white font-black text-lg tracking-tight border-4 border-red-900 shadow-md active:scale-[0.98] transition flex items-center justify-center gap-2">
+            <span>🚨</span>
+            <span>EMERGENCIA (SILENCIOSA)</span>
+          </button>
+        </div>
+      </section>
+
+      <!-- ===================== PESTAÑA 2: CONTACTOS ===================== -->
+      <section id="vtab-contactos" class="vtab-panel hidden space-y-4">
+        <div class="rounded-3xl border-2 border-ink bg-white p-5">
+          <h2 class="text-2xl font-black text-ink">Contactos de emergencia</h2>
+          <p class="text-sm text-gray-700 font-medium mt-1">
+            Cargá tus contactos reales por orden de prioridad. Se envían automáticamente al Centro cuando pedís acompañamiento o activás emergencia.
+          </p>
+        </div>
+
+        <div id="v-contacts-list" class="space-y-3"></div>
+
+        <!-- Formulario Agregar Contacto Real -->
+        <form onsubmit="App.addContact(event)" class="rounded-3xl border-2 border-ink bg-gray-50 p-5 space-y-3">
+          <h3 class="text-base font-black text-ink">+ Agregar contacto de confianza</h3>
+          <div>
+            <label for="c-name" class="block text-xs font-extrabold uppercase text-gray-700 mb-1">Nombre *</label>
+            <input id="c-name" type="text" required placeholder="Ej: Laura"
+              class="w-full min-h-[50px] px-4 rounded-2xl border-2 border-ink bg-white text-base font-semibold" />
+          </div>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label for="c-relation" class="block text-xs font-extrabold uppercase text-gray-700 mb-1">Vínculo *</label>
+              <input id="c-relation" type="text" required placeholder="Ej: Mamá, Pareja, Vecino"
+                class="w-full min-h-[50px] px-4 rounded-2xl border-2 border-ink bg-white text-base font-semibold" />
+            </div>
+            <div>
+              <label for="c-phone" class="block text-xs font-extrabold uppercase text-gray-700 mb-1">WhatsApp / Teléfono *</label>
+              <input id="c-phone" type="tel" required placeholder="Ej: 2984 123456"
+                class="w-full min-h-[50px] px-4 rounded-2xl border-2 border-ink bg-white text-base font-semibold" />
+            </div>
+          </div>
+          <button type="submit" class="w-full min-h-[54px] rounded-2xl bg-ink text-white font-black text-base">
+            GUARDAR CONTACTO
+          </button>
+        </form>
+      </section>
+
+      <!-- ===================== PESTAÑA 3: RECORRIDOS ===================== -->
+      <section id="vtab-recorridos" class="vtab-panel hidden space-y-4">
+        <div class="rounded-3xl border-2 border-ink bg-white p-5 space-y-2.5">
+          <h2 class="text-2xl font-black text-ink">Mis recorridos</h2>
+          <div class="rounded-2xl bg-emerald-50 border border-safe p-3.5 flex items-start gap-2.5">
+            <span class="text-lg">🔒</span>
+            <p class="text-xs sm:text-sm font-semibold text-gray-800 leading-snug">
+              <strong>Sin rastros GPS:</strong> acá solo figuran fecha, hora, barrio, modo y resultado de tus viajes cerrados en este celular.
+            </p>
+          </div>
+        </div>
+        <div id="v-my-history-list" class="space-y-2.5"></div>
+      </section>
+
+      <!-- ===================== PESTAÑA 4: MI BARRIO ===================== -->
+      <section id="vtab-barrio" class="vtab-panel hidden space-y-4">
+        <div class="rounded-3xl border-2 border-ink bg-white p-5">
+          <h2 class="text-2xl font-black text-ink">Mi Barrio • Villa Regina</h2>
+          <p class="text-sm text-gray-700 font-medium mt-1">
+            Resumen comunitario 100% anónimo armado únicamente con acompañamientos reales finalizados en la nube.
+          </p>
+        </div>
+        <div id="v-barrio-stats" class="rounded-3xl border-2 border-ink bg-white p-5 space-y-3"></div>
+      </section>
+
+      <!-- ===================== PESTAÑA 5: PERFIL ===================== -->
+      <section id="vtab-perfil" class="vtab-panel hidden space-y-4">
+        <div class="rounded-3xl border-2 border-ink bg-white p-5">
+          <h2 class="text-2xl font-black text-ink">Mi Perfil</h2>
+          <p class="text-sm text-gray-700 font-medium mt-1">
+            Guardá tus datos reales para iniciar acompañamientos más rápido. El DNI es totalmente opcional.
+          </p>
+        </div>
+
+        <form onsubmit="App.saveProfile(event)" class="rounded-3xl border-2 border-ink bg-white p-5 space-y-4">
+          <div>
+            <label for="p-name" class="block text-sm font-extrabold text-ink mb-1">Nombre y Apellido *</label>
+            <input id="p-name" type="text" required placeholder="Ej: Ana Gómez"
+              class="w-full min-h-[52px] px-4 rounded-2xl border-2 border-ink text-base font-bold" />
+          </div>
+          <div>
+            <label for="p-barrio" class="block text-sm font-extrabold text-ink mb-1">Barrio de Villa Regina *</label>
+            <select id="p-barrio" class="w-full min-h-[52px] px-3 rounded-2xl border-2 border-ink text-base font-bold bg-white">
+              <option value="Barrio Este">Barrio Este</option>
+              <option value="Centro">Centro</option>
+              <option value="Villa Obrera">Villa Obrera</option>
+              <option value="Barrio Nuevo">Barrio Nuevo</option>
+              <option value="Progreso">Progreso</option>
+              <option value="Belgrano">Belgrano</option>
+              <option value="Malvinas">Malvinas</option>
+              <option value="Pretto">Pretto</option>
+              <option value="El Sauce">El Sauce</option>
+              <option value="Otro">Otro</option>
+            </select>
+          </div>
+          <div>
+            <label for="p-whatsapp" class="block text-sm font-extrabold text-ink mb-1">WhatsApp / Teléfono *</label>
+            <input id="p-whatsapp" type="tel" required placeholder="Ej: 2984 551234"
+              class="w-full min-h-[52px] px-4 rounded-2xl border-2 border-ink text-base font-bold" />
+          </div>
+          <div>
+            <label for="p-dni" class="block text-sm font-extrabold text-ink mb-1">
+              DNI <span class="text-xs font-extrabold px-2 py-0.5 rounded-full bg-gray-200 text-gray-700 ml-1">Opcional</span>
+            </label>
+            <input id="p-dni" type="text" placeholder="Podés dejarlo vacío"
+              class="w-full min-h-[52px] px-4 rounded-2xl border-2 border-gray-300 text-base font-semibold" />
+          </div>
+          <button type="submit" class="w-full min-h-[56px] rounded-2xl bg-ink text-white font-black text-lg">
+            GUARDAR PERFIL
+          </button>
+        </form>
+      </section>
+    </main>
+
+    <!-- Navegación Inferior de 5 Pestañas -->
+    <nav aria-label="Navegación Vecino"
+      class="fixed bottom-0 left-0 right-0 z-30 bg-white border-t-2 border-ink shadow-[0_-4px_18px_rgba(0,0,0,0.08)]">
+      <div class="max-w-lg mx-auto grid grid-cols-5 px-1 py-1.5 gap-0.5">
+        <button type="button" onclick="App.switchVecinoTab('inicio')" data-vtab="inicio"
+          class="vnav-btn min-h-[58px] rounded-2xl flex flex-col items-center justify-center gap-0.5 bg-ink text-white font-extrabold text-[11px]">
+          <span class="text-lg leading-none">🏠</span><span>Inicio</span>
+        </button>
+        <button type="button" onclick="App.switchVecinoTab('contactos')" data-vtab="contactos"
+          class="vnav-btn min-h-[58px] rounded-2xl flex flex-col items-center justify-center gap-0.5 text-gray-700 font-bold text-[11px]">
+          <span class="text-lg leading-none">👥</span><span>Contactos</span>
+        </button>
+        <button type="button" onclick="App.switchVecinoTab('recorridos')" data-vtab="recorridos"
+          class="vnav-btn min-h-[58px] rounded-2xl flex flex-col items-center justify-center gap-0.5 text-gray-700 font-bold text-[11px]">
+          <span class="text-lg leading-none">📋</span><span>Recorridos</span>
+        </button>
+        <button type="button" onclick="App.switchVecinoTab('barrio')" data-vtab="barrio"
+          class="vnav-btn min-h-[58px] rounded-2xl flex flex-col items-center justify-center gap-0.5 text-gray-700 font-bold text-[11px]">
+          <span class="text-lg leading-none">🗺️</span><span>Mi Barrio</span>
+        </button>
+        <button type="button" onclick="App.switchVecinoTab('perfil')" data-vtab="perfil"
+          class="vnav-btn min-h-[58px] rounded-2xl flex flex-col items-center justify-center gap-0.5 text-gray-700 font-bold text-[11px]">
+          <span class="text-lg leading-none">👤</span><span>Perfil</span>
+        </button>
+      </div>
+    </nav>
+  </div>
+
+  <!-- ======================================================================= -->
+  <!-- 2. INTERFAZ PERSONAL AUTORIZADO (OPERADOR Y CREADOR/ADMIN)              -->
+  <!-- ======================================================================= -->
+  <div id="shell-staff" class="hidden flex-1 flex flex-col bg-gray-100">
+
+    <!-- Banner Rojo Parpadeante cuando hay PÁNICO o ALERTA ROJA activa -->
+    <div id="op-critical-banner" class="hidden sticky top-0 z-50 panic-banner-flash text-white px-4 py-3 shadow-lg">
+      <div class="max-w-7xl mx-auto flex items-center justify-between gap-3">
+        <div class="flex items-center gap-2.5 min-w-0">
+          <span class="text-2xl shrink-0">🚨</span>
+          <div class="min-w-0">
+            <p class="text-xs font-black uppercase tracking-wider text-red-100">ALERTA CRÍTICA ACTIVA</p>
+            <p id="op-critical-banner-text" class="text-sm sm:text-base font-black truncate">Emergencia recibida</p>
+          </div>
+        </div>
+        <button type="button" onclick="App.focusMostCriticalTrip()"
+          class="min-h-[42px] px-3.5 rounded-xl bg-white text-panic font-black text-xs sm:text-sm shrink-0 shadow">
+          Atender ya
+        </button>
+      </div>
+    </div>
+
+    <!-- Cabecera Staff -->
+    <header class="sticky top-0 z-40 bg-ink text-white border-b-2 border-black shadow-md">
+      <div class="max-w-7xl mx-auto px-3 sm:px-5 py-3 flex flex-col gap-2.5">
+        <div class="flex items-center justify-between gap-2 flex-wrap">
+          <div class="flex items-center gap-2.5 min-w-0">
+            <span class="w-9 h-9 rounded-xl bg-panic text-white font-black text-sm flex items-center justify-center shrink-0">CM</span>
+            <div class="min-w-0">
+              <h1 class="text-sm sm:text-base font-black tracking-tight leading-none truncate">CENTRO DE MONITOREO • VILLA REGINA</h1>
+              <p id="staff-role-label" class="text-xs font-bold text-emerald-300 mt-0.5 truncate">Operador en Guardia</p>
+            </div>
+          </div>
+
+          <div class="flex items-center gap-1.5 flex-wrap">
+            <span id="staff-conn-badge" class="px-2.5 py-1.5 rounded-xl bg-amber-500/20 border border-amber-400 text-amber-200 text-xs font-black">
+              ⏳ Conectando...
+            </span>
+            <button type="button" onclick="App.manualSyncNow()" title="Sincronizar ahora"
+              class="min-h-[38px] px-3 rounded-xl bg-gray-800 hover:bg-gray-700 border border-gray-600 text-white text-xs font-black">
+              🔄
+            </button>
+            <button type="button" id="btn-mute-alarm" onclick="App.toggleOperatorMute()"
+              class="min-h-[38px] px-3 rounded-xl bg-gray-800 hover:bg-gray-700 border border-gray-600 text-white text-xs font-black">
+              🔊 Alarma
+            </button>
+            <button type="button" onclick="App.logoutStaff()"
+              class="min-h-[38px] px-3 rounded-xl bg-panic hover:bg-red-700 text-white text-xs font-black">
+              🚪 Salir
+            </button>
+          </div>
+        </div>
+
+        <!-- Selector Panel Operador / Panel Creador (SOLO VISIBLE PARA CREADOR) -->
+        <div id="creator-switcher" class="hidden grid grid-cols-2 gap-1.5 bg-gray-900 p-1 rounded-2xl border border-gray-700">
+          <button type="button" id="stab-operador" onclick="App.switchStaffPanel('operador')"
+            class="min-h-[42px] px-3 rounded-xl bg-white text-ink font-black text-xs sm:text-sm flex items-center justify-center gap-1.5">
+            <span>🖥️</span><span>Panel Operador</span>
+            <span id="op-active-count-badge" class="hidden px-1.5 py-0.5 rounded-full bg-panic text-white text-[10px]">0</span>
+          </button>
+          <button type="button" id="stab-admin" onclick="App.switchStaffPanel('admin')"
+            class="min-h-[42px] px-3 rounded-xl text-gray-300 hover:text-white font-black text-xs sm:text-sm flex items-center justify-center gap-1.5">
+            <span>⚙️</span><span>Panel Creador / Admin</span>
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Banner de error Firebase en Staff (401/403 o sin red) -->
+    <div id="staff-conn-error-bar" class="hidden bg-red-100 border-b-2 border-panic px-4 py-2.5">
+      <div class="max-w-7xl mx-auto flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs sm:text-sm font-extrabold text-panic">
+        <span id="staff-conn-error-text">Error de conexión con Firebase.</span>
+        <button type="button" id="btn-go-firebase-cfg" onclick="App.switchStaffPanel('admin')"
+          class="hidden self-start sm:self-center px-3 py-1.5 rounded-xl bg-ink text-white text-xs font-black shrink-0">
+          Revisar Firebase
+        </button>
+      </div>
+    </div>
+
+    <!-- =================================================================== -->
+    <!-- PANEL DEL OPERADOR (ASISTENCIA COMPLETA EN VIVO)                    -->
+    <!-- =================================================================== -->
+    <section id="panel-operador" class="max-w-7xl w-full mx-auto px-3 sm:px-5 py-4 space-y-4 pb-12">
+
+      <!-- Contadores Rápidos -->
+      <div class="rounded-3xl border-2 border-ink bg-white p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <h2 class="text-xl font-black text-ink">Monitoreo en Vivo</h2>
+          <p class="text-xs font-semibold text-gray-600">Solo vecinos reales conectados en este momento</p>
+        </div>
+        <div class="flex flex-wrap gap-2">
+          <span id="op-stat-red" class="px-3 py-1.5 rounded-full bg-panic text-white text-xs font-black">0 Pánico / Rojas</span>
+          <span id="op-stat-yellow" class="px-3 py-1.5 rounded-full bg-warn text-ink text-xs font-black">0 Amarillas</span>
+          <span id="op-stat-green" class="px-3 py-1.5 rounded-full bg-safe text-white text-xs font-black">0 En viaje</span>
+        </div>
+      </div>
+
+      <!-- Layout Responsivo: Cola + Mapa (Izquierda) / Ficha de Asistencia (Derecha) -->
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-4">
+
+        <!-- COLUMNA IZQUIERDA -->
+        <div class="lg:col-span-5 space-y-4">
+          <!-- Cola de Alertas y Viajes -->
+          <div class="rounded-3xl border-2 border-ink bg-white p-4 space-y-3">
+            <div class="flex items-center justify-between">
+              <h3 class="text-sm font-black uppercase tracking-wide text-ink">🚨 Cola de Alertas y Viajes</h3>
+              <span id="op-last-sync-text" class="text-[11px] font-bold text-gray-500">—</span>
+            </div>
+            <div id="op-queue-list" class="space-y-2.5 max-h-[340px] overflow-y-auto pr-0.5"></div>
+          </div>
+
+          <!-- Mapa Leaflet en Vivo -->
+          <div class="rounded-3xl border-2 border-ink bg-white overflow-hidden shadow-sm">
+            <div class="px-4 py-3 bg-ink text-white flex items-center justify-between">
+              <span class="text-xs sm:text-sm font-black uppercase tracking-wide">🗺️ Mapa en vivo — Villa Regina</span>
+              <button type="button" onclick="App.recenterOperatorMap()" class="text-[11px] font-extrabold px-2.5 py-1 rounded-lg bg-gray-800 text-gray-200">
+                Centrar
+              </button>
+            </div>
+            <div id="map-operador-fallback" class="hidden p-6 text-center text-xs font-bold text-gray-600 bg-gray-50">
+              Mapa no disponible temporalmente (sin conexión al servidor de mapas). Seguís pudiendo ver coordenadas y abrir Google Maps.
+            </div>
+            <div id="map-operador" class="w-full h-[300px] sm:h-[360px]"></div>
+          </div>
+        </div>
+
+        <!-- COLUMNA DERECHA: FICHA COMPLETA DE ASISTENCIA -->
+        <div id="op-assist-anchor" class="lg:col-span-7 space-y-4">
+
+          <!-- Estado Vacío Limpio -->
+          <div id="op-no-selection" class="rounded-3xl border-2 border-dashed border-gray-400 bg-white p-8 text-center space-y-2">
+            <p class="text-4xl">📡</p>
+            <h3 class="text-lg font-black text-ink">Sin vecinos activos en este momento</h3>
+            <p class="text-sm font-medium text-gray-600 max-w-md mx-auto">
+              Cuando un vecino inicie "Acompañame" o presione "Emergencia", aparecerá aquí automáticamente en vivo para que puedas asistirlo.
+            </p>
+          </div>
+
+          <!-- Panel de Asistencia Activo -->
+          <div id="op-assist-panel" class="hidden space-y-4">
+
+            <!-- Datos Principales + Audio + GPS + Derivaciones + Contactos -->
+            <div class="rounded-3xl border-2 border-ink bg-white p-4 sm:p-5 space-y-4 shadow-sm">
+              <div class="flex items-start justify-between gap-3 border-b border-gray-200 pb-3">
+                <div class="min-w-0">
+                  <div class="flex items-center gap-2 flex-wrap">
+                    <h3 id="op-sel-name" class="text-2xl font-black text-ink">Vecino</h3>
+                    <span id="op-sel-badge" class="px-2.5 py-1 rounded-full bg-safe text-white text-xs font-black uppercase">EN VIAJE</span>
+                  </div>
+                  <p id="op-sel-details" class="text-sm font-bold text-gray-700 mt-1">Barrio • Destino • Modo</p>
+                  <p id="op-sel-timer-line" class="text-xs font-extrabold text-gray-600 mt-1"></p>
+                </div>
+              </div>
+
+              <!-- Tarjeta de Pánico + Reproductor Real de Audio 10s -->
+              <div id="op-panic-audio-card" class="hidden rounded-2xl border-2 border-panic bg-red-50 p-4 space-y-2.5">
+                <div class="flex items-center justify-between gap-2">
+                  <span class="text-xs sm:text-sm font-black text-panic uppercase">🚨 BOTÓN DE PÁNICO SILENCIOSO ACTIVADO</span>
+                  <span id="op-audio-status-pill" class="px-2 py-0.5 rounded-full bg-panic text-white text-[10px] font-black uppercase">Recibiendo...</span>
+                </div>
+                <p id="op-audio-hint" class="text-xs font-bold text-red-900">Grabando audio ambiental de 10 segundos en el celular del vecino...</p>
+                <audio id="op-audio-player" controls class="hidden w-full h-11 rounded-xl"></audio>
+              </div>
+
+              <!-- Coordenadas GPS y Enlace a Google Maps -->
+              <div class="rounded-2xl bg-gray-50 border border-gray-200 p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <p class="text-xs font-black text-ink">📍 Ubicación GPS en vivo</p>
+                  <p id="op-sel-gps-text" class="text-xs font-mono text-gray-600">Esperando coordenadas...</p>
+                </div>
+                <a id="op-sel-gmaps-link" href="#" target="_blank" rel="noopener noreferrer"
+                  class="min-h-[44px] px-4 rounded-xl bg-ink text-white font-black text-xs flex items-center justify-center gap-1.5 shrink-0">
+                  📍 Abrir ubicación en Google Maps
+                </a>
+              </div>
+
+              <!-- EMERGENCIAS Y DERIVACIÓN -->
+              <div class="space-y-2 pt-1">
+                <h4 class="text-xs font-black uppercase tracking-wide text-ink">🚨 Emergencias y Derivación (registra hora automáticamente)</h4>
+                <a href="tel:911" onclick="App.logDerivation('Llamada al 911 (Emergencias)')"
+                  class="w-full min-h-[58px] px-4 rounded-2xl bg-panic hover:bg-red-700 text-white font-black text-base sm:text-lg shadow-md flex items-center justify-center gap-2 active:scale-[0.98] transition">
+                  <span>🚨</span><span>LLAMAR AL 911</span>
+                </a>
+                <div class="grid grid-cols-2 gap-2">
+                  <a href="tel:101" onclick="App.logDerivation('Llamada a Policía (101)')"
+                    class="min-h-[48px] px-3 rounded-2xl bg-ink text-white font-black text-xs sm:text-sm flex items-center justify-center gap-1.5">
+                    🚔 Policía (101)
+                  </a>
+                  <a href="tel:107" onclick="App.logDerivation('Llamada a Ambulancia (107)')"
+                    class="min-h-[48px] px-3 rounded-2xl border-2 border-ink bg-white text-ink font-black text-xs sm:text-sm flex items-center justify-center gap-1.5">
+                    🚑 Ambulancia (107)
+                  </a>
+                </div>
+              </div>
+
+              <!-- COMUNICARSE CON EL VECINO -->
+              <div class="space-y-2 pt-2 border-t border-gray-200">
+                <h4 class="text-xs font-black uppercase tracking-wide text-ink">📱 Comunicarse con el Vecino</h4>
+                <div class="grid grid-cols-2 gap-2">
+                  <a id="op-btn-call-vecino" href="#" onclick="App.logDerivation('Llamada telefónica al vecino')"
+                    class="min-h-[48px] px-3 rounded-2xl border-2 border-ink bg-white text-ink font-black text-xs sm:text-sm flex items-center justify-center gap-1.5">
+                    📞 Llamar al vecino
+                  </a>
+                  <a id="op-btn-wa-vecino" href="#" target="_blank" rel="noopener noreferrer" onclick="App.logDerivation('WhatsApp al vecino')"
+                    class="min-h-[48px] px-3 rounded-2xl bg-safe text-white font-black text-xs sm:text-sm flex items-center justify-center gap-1.5">
+                    💬 WhatsApp al vecino
+                  </a>
+                </div>
+              </div>
+
+              <!-- CONTACTOS DE EMERGENCIA REALES DEL VECINO -->
+              <div class="space-y-2.5 pt-2 border-t border-gray-200">
+                <div class="flex items-center justify-between">
+                  <h4 class="text-xs font-black uppercase tracking-wide text-ink">👥 Contactos de Emergencia del Vecino</h4>
+                  <span class="text-[11px] font-bold text-gray-500">Por prioridad</span>
+                </div>
+                <div id="op-sel-contacts" class="space-y-2"></div>
+              </div>
+            </div>
+
+            <!-- CHAT BIDIRECCIONAL EN VIVO -->
+            <div class="rounded-3xl border-2 border-ink bg-white p-4 sm:p-5 space-y-3 shadow-sm">
+              <div class="flex items-center justify-between">
+                <h4 class="text-sm font-black uppercase tracking-wide text-ink">💬 Chat en Vivo con el Vecino</h4>
+                <span class="text-xs font-extrabold text-safe">● Sincronizado</span>
+              </div>
+              <div class="flex flex-wrap gap-1.5">
+                <button type="button" onclick="App.sendOperatorChat('¿Todo bien?')" class="px-3 py-1.5 rounded-xl bg-ink text-white text-xs font-extrabold">¿Todo bien?</button>
+                <button type="button" onclick="App.sendOperatorChat('Te veo en el mapa')" class="px-3 py-1.5 rounded-xl bg-gray-100 border border-gray-300 text-ink text-xs font-extrabold">Te veo en el mapa</button>
+                <button type="button" onclick="App.sendOperatorChat('Confirmame cuando llegues')" class="px-3 py-1.5 rounded-xl bg-gray-100 border border-gray-300 text-ink text-xs font-extrabold">Confirmame cuando llegues</button>
+                <button type="button" onclick="App.sendOperatorChat('Avisamos a tu contacto de emergencia')" class="px-3 py-1.5 rounded-xl bg-red-50 border border-red-300 text-panic text-xs font-extrabold">Avisamos a tu contacto</button>
+              </div>
+              <div id="op-chat-list" class="h-48 overflow-y-auto space-y-2 p-3 rounded-2xl bg-gray-50 border border-gray-200 text-sm"></div>
+              <form onsubmit="App.handleOperatorChatForm(event)" class="flex gap-2">
+                <input id="op-chat-input" type="text" placeholder="Escribir mensaje al vecino..."
+                  class="flex-1 min-h-[48px] px-4 rounded-2xl border-2 border-ink text-sm font-semibold focus:outline-none" />
+                <button type="submit" class="min-h-[48px] px-4 rounded-2xl bg-ink text-white font-black text-sm">Enviar</button>
+              </form>
+            </div>
+
+            <!-- ACCIONES DE CIERRE Y GESTIÓN -->
+            <div class="rounded-3xl border-2 border-ink bg-white p-4 sm:p-5 space-y-3 shadow-sm">
+              <h4 class="text-xs font-black uppercase tracking-wide text-ink">🗂️ Gestión y Cierre del Viaje (borra GPS de Firebase)</h4>
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <button type="button" onclick="App.operatorCloseTrip('Llegó bien')"
+                  class="min-h-[52px] px-4 py-2 rounded-2xl bg-safe text-white font-black text-sm">
+                  ✅ Marcar Llegó Bien
+                </button>
+                <button type="button" onclick="App.confirmOperatorCancelTrip()"
+                  class="min-h-[52px] px-4 py-2 rounded-2xl border-2 border-panic bg-red-50 text-panic font-black text-sm">
+                  🗑️ Cancelar / Eliminar viaje
+                </button>
+              </div>
+
+              <div class="pt-3 border-t border-gray-200 space-y-2">
+                <h5 class="text-xs font-black uppercase tracking-wide text-gray-600">📑 Registro de Derivaciones de este Viaje</h5>
+                <div id="op-trip-events" class="max-h-40 overflow-y-auto space-y-1.5 text-xs"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- =================================================================== -->
+    <!-- PANEL CREADOR / ADMIN (JACINTO) — SOLO CÓDIGO DE CREADOR            -->
+    <!-- =================================================================== -->
+    <section id="panel-admin" class="hidden max-w-7xl w-full mx-auto px-3 sm:px-5 py-5 space-y-5 pb-14">
+
+      <!-- Cabecera Admin -->
+      <div class="rounded-3xl border-2 border-ink bg-ink text-white p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <p class="text-xs font-extrabold uppercase tracking-widest text-amber-300">Acceso Exclusivo del Creador</p>
+          <h2 class="text-2xl sm:text-3xl font-black tracking-tight">Panel Creador / Admin (Jacinto)</h2>
+          <p class="text-xs sm:text-sm text-gray-300 font-medium">Estadísticas reales anónimas, conexión Firebase y seguridad</p>
+        </div>
+        <div class="flex flex-wrap gap-2">
+          <button type="button" onclick="App.confirmResetTrips()"
+            class="min-h-[44px] px-3.5 rounded-2xl bg-gray-800 hover:bg-gray-700 border border-gray-600 text-white text-xs font-black">
+            🧹 Borrar viajes activos
+          </button>
+          <button type="button" onclick="App.confirmResetStats()"
+            class="min-h-[44px] px-3.5 rounded-2xl bg-panic hover:bg-red-700 text-white text-xs font-black">
+            🗑️ Reiniciar estadísticas
+          </button>
+        </div>
+      </div>
+
+      <!-- SECCIÓN: CONEXIÓN EN VIVO ENTRE CELULARES (FIREBASE) -->
+      <div class="rounded-3xl border-2 border-ink bg-white p-5 sm:p-6 space-y-4 shadow-sm">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-gray-200 pb-3">
+          <div>
+            <h3 class="text-xl font-black text-ink">🌐 Conexión en Vivo entre Celulares (Firebase)</h3>
+            <p class="text-xs sm:text-sm font-semibold text-gray-600">
+              URL grabada fija en la app para que cualquier celular arranque en línea automáticamente.
+            </p>
+          </div>
+          <span id="cfg-firebase-status" class="px-3 py-1.5 rounded-full bg-amber-100 text-amber-900 text-xs font-black self-start sm:self-center">
+            ⏳ Verificando...
+          </span>
+        </div>
+
+        <form onsubmit="App.testAndSaveFirebase(event)" class="space-y-3">
+          <div>
+            <label for="cfg-firebase-url" class="block text-xs font-black uppercase text-ink mb-1.5">
+              URL de Firebase Realtime Database
+            </label>
+            <input id="cfg-firebase-url" type="url" required
+              placeholder="https://acompaname-app-75c8d-default-rtdb.firebaseio.com"
+              class="w-full min-h-[50px] px-4 rounded-2xl border-2 border-ink text-sm sm:text-base font-bold focus:outline-none" />
+          </div>
+          <p id="cfg-firebase-feedback" class="hidden text-xs font-extrabold p-3 rounded-xl"></p>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+            <button type="submit" id="btn-test-firebase"
+              class="min-h-[52px] px-4 rounded-2xl bg-safe text-white font-black text-xs sm:text-sm active:scale-[0.98] transition">
+              🔌 Probar y Guardar Conexión
+            </button>
+            <button type="button" onclick="App.downloadApkReadyHtml()"
+              class="min-h-[52px] px-4 rounded-2xl bg-ink text-white font-black text-xs sm:text-sm active:scale-[0.98] transition">
+              📥 Descargar HTML listo para APK
+            </button>
+          </div>
+        </form>
+      </div>
+
+      <!-- KPIs REALES -->
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <div class="rounded-3xl border-2 border-ink bg-white p-4 sm:p-5">
+          <p class="text-xs font-extrabold uppercase text-gray-500">Total Acompañamientos</p>
+          <p id="kpi-total" class="text-4xl font-black text-ink mt-1">0</p>
+          <p class="text-xs font-semibold text-gray-500 mt-1">Datos reales anónimos</p>
+        </div>
+        <div class="rounded-3xl border-2 border-ink bg-white p-4 sm:p-5">
+          <p class="text-xs font-extrabold uppercase text-gray-500">Llegaron Bien</p>
+          <p id="kpi-ok" class="text-4xl font-black text-safe mt-1">0</p>
+          <p id="kpi-ok-pct" class="text-xs font-semibold text-gray-500 mt-1">0% de cerrados</p>
+        </div>
+        <div class="rounded-3xl border-2 border-ink bg-white p-4 sm:p-5">
+          <p class="text-xs font-extrabold uppercase text-gray-500">Alertas / Pánicos</p>
+          <p id="kpi-alerts" class="text-4xl font-black text-panic mt-1">0</p>
+          <p class="text-xs font-semibold text-gray-500 mt-1">Registros con alerta</p>
+        </div>
+        <div class="rounded-3xl border-2 border-ink bg-white p-4 sm:p-5">
+          <p class="text-xs font-extrabold uppercase text-gray-500">Activos Ahora</p>
+          <p id="kpi-active" class="text-4xl font-black text-ink mt-1">0</p>
+          <p class="text-xs font-semibold text-gray-500 mt-1">En monitoreo en vivo</p>
+        </div>
+      </div>
+
+      <!-- GRÁFICOS CHART.JS -->
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div class="rounded-3xl border-2 border-ink bg-white p-5 space-y-3">
+          <div>
+            <h3 class="text-lg font-black text-ink">Pedidos por Barrio</h3>
+            <p class="text-xs font-semibold text-gray-500">Estadísticas anónimas de Villa Regina</p>
+          </div>
+          <div id="chart-barrio-empty" class="h-56 flex items-center justify-center text-sm font-bold text-gray-400 text-center px-4">
+            Aún no hay acompañamientos registrados (0).
+          </div>
+          <div id="chart-barrio-wrap" class="hidden relative h-60 w-full">
+            <canvas id="canvas-barrios"></canvas>
+          </div>
+        </div>
+
+        <div class="rounded-3xl border-2 border-ink bg-white p-5 space-y-3">
+          <div>
+            <h3 class="text-lg font-black text-ink">Pedidos por Franja Horaria</h3>
+            <p class="text-xs font-semibold text-gray-500">Horarios reales de mayor demanda</p>
+          </div>
+          <div id="chart-hora-empty" class="h-56 flex items-center justify-center text-sm font-bold text-gray-400 text-center px-4">
+            Aún no hay acompañamientos registrados (0).
+          </div>
+          <div id="chart-hora-wrap" class="hidden relative h-60 w-full">
+            <canvas id="canvas-horarios"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- SEGURIDAD, FOTO DE JACINTO E HISTORIAL DE ACCESOS -->
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-4">
+        <div class="lg:col-span-7 rounded-3xl border-2 border-ink bg-white p-5 sm:p-6 space-y-4">
+          <div class="border-b border-gray-200 pb-3">
+            <h3 class="text-xl font-black text-ink">🔐 Códigos de Acceso y Foto de Jacinto</h3>
+            <p class="text-xs font-semibold text-gray-600">Se sincronizan en Firebase (/acompaname/config.json) para todos los celulares.</p>
+          </div>
+
+          <form onsubmit="App.saveSecurityConfig(event)" class="space-y-4">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div class="p-3.5 rounded-2xl bg-gray-50 border-2 border-gray-200 space-y-1.5">
+                <label for="cfg-op-code" class="block text-xs font-black uppercase text-ink">Código de Operador</label>
+                <input id="cfg-op-code" type="text" required minlength="4"
+                  class="w-full min-h-[46px] px-3 rounded-xl border-2 border-ink bg-white text-base font-black tracking-wider" />
+                <p class="text-[11px] font-semibold text-gray-600">Solo abre Panel Operador.</p>
+              </div>
+              <div class="p-3.5 rounded-2xl bg-red-50/60 border-2 border-red-200 space-y-1.5">
+                <label for="cfg-creator-code" class="block text-xs font-black uppercase text-panic">Código de Creador</label>
+                <input id="cfg-creator-code" type="text" required minlength="4"
+                  class="w-full min-h-[46px] px-3 rounded-xl border-2 border-panic bg-white text-base font-black tracking-wider" />
+                <p class="text-[11px] font-semibold text-red-900">Acceso a Operador + Admin.</p>
+              </div>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label for="cfg-inst-name" class="block text-xs font-black uppercase text-ink mb-1">Texto Institucional</label>
+                <input id="cfg-inst-name" type="text" placeholder="Programa Vecinal • Jacinto"
+                  class="w-full min-h-[46px] px-3 rounded-xl border-2 border-gray-300 text-sm font-bold" />
+              </div>
+              <div>
+                <label for="cfg-jacinto-url" class="block text-xs font-black uppercase text-ink mb-1">URL Foto de Jacinto (Opcional)</label>
+                <input id="cfg-jacinto-url" type="url" placeholder="https://..."
+                  class="w-full min-h-[46px] px-3 rounded-xl border-2 border-gray-300 text-sm font-semibold" />
+              </div>
+            </div>
+
+            <button type="submit" class="w-full min-h-[52px] rounded-2xl bg-ink text-white font-black text-sm sm:text-base">
+              💾 GUARDAR CONFIGURACIÓN EN LA NUBE
+            </button>
+          </form>
+        </div>
+
+        <!-- Historial de Accesos y Derivaciones -->
+        <div class="lg:col-span-5 rounded-3xl border-2 border-ink bg-white p-5 space-y-3">
+          <h3 class="text-base font-black text-ink">🪪 Historial de Accesos y Derivaciones</h3>
+          <div id="admin-logs-list" class="max-h-72 overflow-y-auto space-y-2 text-xs"></div>
+        </div>
+      </div>
+
+    </section>
+  </div>
+
+  <!-- ======================================================================= -->
+  <!-- JAVASCRIPT PURO (SIN TYPE="MODULE") + FIREBASE REST API EN VIVO         -->
+  <!-- ======================================================================= -->
+  <script>
+    // =========================================================================
+    // URL FIJA DE FIREBASE REALTIME DATABASE (CONEXIÓN AUTOMÁTICA AL INICIAR)
+    // =========================================================================
+    const DEFAULT_FIREBASE_URL = "https://acompaname-app-75c8d-default-rtdb.firebaseio.com";
+
+    // Captura del HTML base limpio para re-exportar si el Creador cambia la URL en el futuro
+    const CLEAN_SOURCE_HTML = '<!DOCTYPE html>\n' + document.documentElement.outerHTML;
+
+    (function () {
+      'use strict';
+
+      // Centro geográfico de Villa Regina, Río Negro
+      const VILLA_REGINA_CENTER = [-39.1000, -67.0667];
+
+      // Claves de almacenamiento local del dispositivo
+      const LS_KEYS = {
+        DB_URL: 'acomp_firebase_url_v2',
+        PROFILE: 'acomp_vecino_profile_v2',
+        CONTACTS: 'acomp_vecino_contacts_v2',
+        MY_HISTORY: 'acomp_vecino_history_v2',
+        MY_TRIP_ID: 'acomp_vecino_active_trip_v2',
+        DEVICE_ID: 'acomp_device_uid_v2'
+      };
+
+      // =======================================================================
+      // ESTADO EN MEMORIA — INICIA 100% VACÍO (CERO DATOS DEMO)
+      // =======================================================================
+      const state = {
+        deviceId: getOrCreateDeviceId(),
+        dbUrl: '',
+        cloudStatus: 'connecting', // 'connecting' | 'online' | 'error'
+        cloudErrorDetail: '',
+        lastSyncAt: null,
+        configInitializedInCloud: false,
+
+        // Roles y sesión
+        authRole: 'vecino',       // 'vecino' | 'operador' | 'creador'
+        staffPanel: 'operador',   // 'operador' | 'admin'
+        operatorName: '',
+        operatorMuted: false,
+
+        // Configuración sincronizada en /acompaname/config.json
+        config: {
+          operatorCode: 'OP2026',
+          creatorCode: 'CREADOR2026',
+          jacintoPhotoUrl: '',
+          institutionName: 'Programa Vecinal • Jacinto'
+        },
+
+        // Datos del Vecino (100% vacíos al inicio)
+        vecinoTab: 'inicio',
+        profile: { name: '', barrio: 'Barrio Este', whatsapp: '', dni: '' },
+        contacts: [],
+        myHistory: [],
+        myActiveTripId: null,
+        draftTrip: { mode: 'Voy caminando', etaMinutes: 15 },
+        lastReadOpMsgCount: 0,
+        lastVecinoChatCount: 0,
+        lastOpChatCount: 0,
+
+        // Datos compartidos en Firebase (100% vacíos hasta recibir datos reales)
+        trips: {},
+        stats: {},
+        logs: {},
+
+        // Operador UI
+        selectedTripId: null,
+        mapOp: null,
+        mapMarkers: {},
+        chartBarrios: null,
+        chartHorarios: null,
+        lastAlarmBeepAt: 0,
+
+        // Watchers y timers
+        pollTimer: null,
+        gpsWatchId: null,
+        gpsSyncTimer: null,
+        latestGps: null,
+        gpsStateText: 'Esperando permiso/señal GPS...',
+        panicTimer: null,
+        isRecordingPanic: false
+      };
+
+      // =======================================================================
+      // UTILIDADES: NORMALIZACIÓN URL, TELÉFONOS ARGENTINOS Y SEGURIDAD HTML
+      // =======================================================================
+      function getOrCreateDeviceId() {
+        try {
+          let id = localStorage.getItem(LS_KEYS.DEVICE_ID);
+          if (!id) {
+            id = 'dev_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
+            localStorage.setItem(LS_KEYS.DEVICE_ID, id);
+          }
+          return id;
+        } catch (e) {
+          return 'dev_' + Date.now().toString(36);
+        }
+      }
+
+      function uid(prefix) {
+        return prefix + '_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 7);
+      }
+
+      function escapeHtml(str) {
+        return String(str == null ? '' : str)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#39;');
+      }
+
+      /**
+       * Normaliza siempre la URL de Firebase:
+       * - Protocolo https:// en minúscula (corrige Https://, HTTP:// o sin protocolo)
+       * - Sin barras finales sobrantes
+       */
+      function normalizeFirebaseUrl(raw) {
+        let u = String(raw || '').trim();
+        if (!u) return '';
+        u = u.replace(/^https?:\/\//i, function () { return 'https://'; });
+        if (u.indexOf('https://') !== 0) {
+          u = 'https://' + u;
+        }
+        return u.replace(/\/+$/, '');
+      }
+
+      /**
+       * Resuelve la URL de Firebase al iniciar:
+       * Si localStorage está vacío o inválido, SIEMPRE usa DEFAULT_FIREBASE_URL.
+       */
+      function resolveFirebaseUrl() {
+        try {
+          const saved = normalizeFirebaseUrl(localStorage.getItem(LS_KEYS.DB_URL));
+          if (saved) return saved;
+        } catch (e) {}
+        return normalizeFirebaseUrl(DEFAULT_FIREBASE_URL);
+      }
+
+      /**
+       * Normaliza teléfonos argentinos para llamadas (tel:) y WhatsApp (wa.me/549...)
+       */
+      function normalizeArgPhone(raw) {
+        const original = String(raw || '').trim();
+        let d = original.replace(/\D/g, '');
+        if (!d) return { display: original, telHref: '', waNumber: '' };
+        if (d.length <= 4) return { display: d, telHref: 'tel:' + d, waNumber: '' };
+
+        if (d.indexOf('549') === 0 && d.length >= 12) d = d.slice(3);
+        else if (d.indexOf('54') === 0 && d.length >= 11) d = d.slice(2);
+
+        if (d.indexOf('0') === 0) d = d.slice(1);
+
+        if (d.length === 12) {
+          if (d.indexOf('1115') === 0) d = '11' + d.slice(4);
+          else if (d.slice(3, 5) === '15') d = d.slice(0, 3) + d.slice(5);
+          else if (d.slice(4, 6) === '15') d = d.slice(0, 4) + d.slice(6);
+        } else if (d.length === 9 && d.indexOf('15') === 0) {
+          d = '298' + d.slice(2);
+        } else if (d.length === 7) {
+          d = '298' + d;
+        }
+
+        if (d.length === 10) {
+          return { display: original, telHref: 'tel:+549' + d, waNumber: '549' + d };
+        }
+        const full = d.indexOf('54') === 0 ? d : '549' + d;
+        return { display: original, telHref: 'tel:+' + full, waNumber: full };
+      }
+
+      function buildWhatsAppLink(phoneRaw, messageText) {
+        const norm = normalizeArgPhone(phoneRaw);
+        if (!norm.waNumber) return '#';
+        return 'https://wa.me/' + norm.waNumber + '?text=' + encodeURIComponent(messageText);
+      }
+
+      function formatTimeNow() {
+        const d = new Date();
+        return {
+          dateStr: d.toLocaleDateString('es-AR'),
+          timeStr: d.toTimeString().slice(0, 8),
+          hmStr: d.toTimeString().slice(0, 5),
+          hourNum: d.getHours()
+        };
+      }
+
+      function getGoogleMapsUrl(lat, lng) {
+        if (typeof lat !== 'number' || typeof lng !== 'number') return '';
+        return 'https://www.google.com/maps?q=' + lat + ',' + lng;
+      }
+
+      /**
+       * Clasifica urgencia del viaje en vivo:
+       * 4 = PÁNICO (rojo pulsante)
+       * 3 = Vencido +5 min (alerta roja)
+       * 2 = Quieto >3 min o demorado (alerta amarilla)
+       * 1 = Normal activo (verde)
+       */
+      function computeTripSeverity(trip) {
+        const now = Date.now();
+        if (trip.panic) {
+          return { level: 'panic', weight: 4, label: 'PÁNICO', reason: 'Botón de pánico silencioso activado' };
+        }
+        const overdueMs = now - (trip.etaEndsAt || now);
+        if (overdueMs >= 5 * 60 * 1000) {
+          const mins = Math.floor(overdueMs / 60000);
+          return { level: 'red', weight: 3, label: 'ALERTA ROJA', reason: 'Vencido hace ' + mins + ' min sin confirmar llegada' };
+        }
+        if (overdueMs > 0) {
+          const mins = Math.max(1, Math.ceil(overdueMs / 60000));
+          return { level: 'yellow', weight: 2, label: 'DEMORADO', reason: 'Demora de ' + mins + ' min sobre lo estimado' };
+        }
+        const lastMove = trip.lastMovedAt || trip.startedAt || now;
+        const stillMs = now - lastMove;
+        if (stillMs >= 3 * 60 * 1000 && (now - (trip.startedAt || now)) >= 3 * 60 * 1000) {
+          const mins = Math.floor(stillMs / 60000);
+          return { level: 'yellow', weight: 2, label: 'QUIETO +3M', reason: 'Sin movimiento hace ' + mins + ' min' };
+        }
+        return { level: 'green', weight: 1, label: 'EN VIAJE', reason: '' };
+      }
+
+      function formatCountdown(etaEndsAt) {
+        const diffSec = Math.floor(((etaEndsAt || Date.now()) - Date.now()) / 1000);
+        if (diffSec >= 0) {
+          const m = Math.floor(diffSec / 60);
+          const s = diffSec % 60;
+          return {
+            big: String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0'),
+            short: 'Quedan ' + Math.max(1, Math.ceil(diffSec / 60)) + ' min',
+            overdue: false
+          };
+        }
+        const over = Math.abs(diffSec);
+        const m = Math.floor(over / 60);
+        const s = over % 60;
+        return {
+          big: '+' + String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0'),
+          short: 'Vencido +' + Math.max(1, Math.ceil(over / 60)) + ' min',
+          overdue: true
+        };
+      }
+
+      // =======================================================================
+      // CAPA DE SINCRONIZACIÓN REAL CON FIREBASE REALTIME DATABASE (REST API)
+      // Endpoints: /acompaname/config.json, /trips.json, /stats.json, /logs.json
+      // =======================================================================
+      function explainFirebaseError(status, errObj) {
+        if (status === 401 || status === 403) {
+          return 'Error ' + status + ': Reglas de Firebase bloqueadas. En Firebase → Realtime Database → Reglas habilitá ".read": true y ".write": true.';
+        }
+        if (status === 404) {
+          return 'Error 404: Base de datos no encontrada. Revisá la URL de Firebase.';
+        }
+        if (status) {
+          return 'Error Firebase HTTP ' + status + '.';
+        }
+        return 'Sin conexión a internet o Firebase inaccesible' + (errObj && errObj.message ? ' (' + errObj.message + ')' : '.');
+      }
+
+      async function fbRequest(subPath, method, payload) {
+        const base = state.dbUrl || resolveFirebaseUrl();
+        const url = base + '/acompaname/' + subPath + '.json' + (method === 'GET' ? '?t=' + Date.now() : '');
+        const opts = { method: method || 'GET', headers: {} };
+        if (payload !== undefined) {
+          opts.headers['Content-Type'] = 'application/json';
+          opts.body = JSON.stringify(payload);
+        }
+        const res = await fetch(url, opts);
+        if (!res.ok) {
+          const err = new Error(explainFirebaseError(res.status));
+          err.httpStatus = res.status;
+          throw err;
+        }
+        return await res.json();
+      }
+
+      function markCloudOnline() {
+        state.cloudStatus = 'online';
+        state.cloudErrorDetail = '';
+        state.lastSyncAt = Date.now();
+        updateConnectionUI();
+      }
+
+      function markCloudError(err) {
+        state.cloudStatus = 'error';
+        state.cloudErrorDetail = (err && err.message) ? err.message : 'Sin conexión con Firebase.';
+        updateConnectionUI();
+      }
+
+      // Sincronización periódica (cada 2.5s) leyendo los 4 nodos en paralelo
+      async function pullCloudState() {
+        try {
+          const results = await Promise.all([
+            fbRequest('config', 'GET'),
+            fbRequest('trips', 'GET'),
+            fbRequest('stats', 'GET'),
+            fbRequest('logs', 'GET')
+          ]);
+
+          const cfgData = results[0];
+          const tripsData = results[1];
+          const statsData = results[2];
+          const logsData = results[3];
+
+          if (cfgData && typeof cfgData === 'object') {
+            state.config = {
+              operatorCode: cfgData.operatorCode || 'OP2026',
+              creatorCode: cfgData.creatorCode || 'CREADOR2026',
+              jacintoPhotoUrl: cfgData.jacintoPhotoUrl || '',
+              institutionName: cfgData.institutionName || 'Programa Vecinal • Jacinto'
+            };
+            state.configInitializedInCloud = true;
+          } else if (!state.configInitializedInCloud) {
+            // Inicializar config por defecto en la nube si aún está vacía
+            state.configInitializedInCloud = true;
+            fbRequest('config', 'PUT', state.config).catch(function () {});
+          }
+
+          state.trips = (tripsData && typeof tripsData === 'object') ? tripsData : {};
+          state.stats = (statsData && typeof statsData === 'object') ? statsData : {};
+          state.logs = (logsData && typeof logsData === 'object') ? logsData : {};
+
+          markCloudOnline();
+
+          // Si el viaje del vecino fue cerrado/cancelado por el operador, limpiar estado local
+          if (state.myActiveTripId && !state.trips[state.myActiveTripId]) {
+            stopGpsTracking();
+            state.myActiveTripId = null;
+            state.lastReadOpMsgCount = 0;
+            try { localStorage.removeItem(LS_KEYS.MY_TRIP_ID); } catch (e) {}
+            hideSilentPanicBox();
+          }
+
+          // Si el viaje seleccionado en Operador ya no existe, ajustar selección
+          if (state.selectedTripId && !state.trips[state.selectedTripId]) {
+            const nextList = getSortedTrips();
+            state.selectedTripId = nextList.length > 0 ? nextList[0].id : null;
+          }
+
+          applyConfigToUI();
+          renderAll();
+          checkOperatorEmergencyAlarm();
+        } catch (err) {
+          markCloudError(err);
+        }
+      }
+
+      function startCloudPolling() {
+        if (state.pollTimer) clearInterval(state.pollTimer);
+        pullCloudState();
+        state.pollTimer = setInterval(pullCloudState, 2500);
+      }
+
+      async function manualSyncNow() {
+        await pullCloudState();
+        if (state.cloudStatus === 'online') {
+          showToast('Sincronizado en vivo con la nube.', 'green');
+        } else {
+          showToast(state.cloudErrorDetail || 'Error al sincronizar.', 'red');
+        }
+      }
+
+      // Operaciones de escritura inmediata en Firebase
+      async function cloudPutTrip(tripObj) {
+        state.trips[tripObj.id] = tripObj;
+        renderAll();
+        try {
+          await fbRequest('trips/' + tripObj.id, 'PUT', tripObj);
+          markCloudOnline();
+          return true;
+        } catch (err) {
+          markCloudError(err);
+          showToast('No se pudo guardar en la nube: ' + err.message, 'red');
+          return false;
+        }
+      }
+
+      async function cloudPatchTrip(tripId, patchObj) {
+        if (!state.trips[tripId]) return;
+        Object.assign(state.trips[tripId], patchObj);
+        renderAll();
+        try {
+          await fbRequest('trips/' + tripId, 'PATCH', patchObj);
+          markCloudOnline();
+        } catch (err) {
+          markCloudError(err);
+        }
+      }
+
+      async function cloudDeleteTrip(tripId) {
+        delete state.trips[tripId];
+        if (state.selectedTripId === tripId) {
+          const rest = getSortedTrips();
+          state.selectedTripId = rest.length > 0 ? rest[0].id : null;
+        }
+        renderAll();
+        try {
+          await fbRequest('trips/' + tripId, 'DELETE');
+          markCloudOnline();
+        } catch (err) {
+          markCloudError(err);
+          showToast('Error al eliminar viaje en Firebase: ' + err.message, 'red');
+        }
+      }
+
+      async function cloudAddTripMessage(tripId, sender, text) {
+        const msgId = uid('msg');
+        const msgObj = { id: msgId, sender: sender, text: text, timestamp: Date.now() };
+        if (state.trips[tripId]) {
+          if (!state.trips[tripId].messages) state.trips[tripId].messages = {};
+          state.trips[tripId].messages[msgId] = msgObj;
+        }
+        renderChats();
+        try {
+          await fbRequest('trips/' + tripId + '/messages/' + msgId, 'PUT', msgObj);
+          markCloudOnline();
+        } catch (err) {
+          markCloudError(err);
+          showToast('Error al enviar mensaje: ' + err.message, 'red');
+        }
+      }
+
+      async function cloudAddTripEvent(tripId, actionText) {
+        const now = formatTimeNow();
+        const evtId = uid('evt');
+        const opLabel = state.operatorName || (state.authRole === 'creador' ? 'Creador' : 'Operador');
+        const evtObj = {
+          id: evtId,
+          action: actionText,
+          operator: opLabel,
+          dateStr: now.dateStr,
+          timeStr: now.timeStr,
+          timestamp: Date.now()
+        };
+        if (state.trips[tripId]) {
+          if (!state.trips[tripId].events) state.trips[tripId].events = {};
+          state.trips[tripId].events[evtId] = evtObj;
+        }
+        renderOperatorDetail();
+        try {
+          await fbRequest('trips/' + tripId + '/events/' + evtId, 'PUT', evtObj);
+          markCloudOnline();
+        } catch (err) {
+          markCloudError(err);
+        }
+        const nName = state.trips[tripId] ? state.trips[tripId].neighborName : 'Vecino';
+        await cloudAddLog('Derivación', actionText + ' (' + nName + ')');
+      }
+
+      async function cloudAddStat(record) {
+        const statId = uid('stat');
+        const cleanStat = {
+          id: statId,
+          barrio: record.barrio,
+          fecha: record.fecha,
+          hora: record.hora,
+          hourNum: record.hourNum,
+          modo: record.modo,
+          resultado: record.resultado,
+          hadAlert: Boolean(record.hadAlert),
+          createdAt: Date.now()
+        };
+        state.stats[statId] = cleanStat;
+        renderBarrioStats();
+        if (state.authRole === 'creador' && state.staffPanel === 'admin') renderAdminPanel();
+        try {
+          await fbRequest('stats/' + statId, 'PUT', cleanStat);
+          markCloudOnline();
+        } catch (err) {
+          markCloudError(err);
+        }
+      }
+
+      async function cloudSaveConfig(newCfg) {
+        state.config = Object.assign({}, state.config, newCfg);
+        applyConfigToUI();
+        try {
+          await fbRequest('config', 'PUT', state.config);
+          markCloudOnline();
+          return true;
+        } catch (err) {
+          markCloudError(err);
+          showToast('Error al guardar configuración: ' + err.message, 'red');
+          return false;
+        }
+      }
+
+      async function cloudAddLog(type, detail) {
+        const now = formatTimeNow();
+        const logId = uid('log');
+        const entry = {
+          id: logId,
+          type: type,
+          operator: state.operatorName || (state.authRole === 'creador' ? 'Creador' : 'Sistema'),
+          detail: detail,
+          dateStr: now.dateStr,
+          timeStr: now.timeStr,
+          createdAt: Date.now()
+        };
+        state.logs[logId] = entry;
+        if (state.authRole === 'creador' && state.staffPanel === 'admin') renderAdminLogs();
+        try {
+          await fbRequest('logs/' + logId, 'PUT', entry);
+          markCloudOnline();
+        } catch (err) {
+          markCloudError(err);
+        }
+      }
+
+      // =======================================================================
+      // PERSISTENCIA LOCAL DEL VECINO (SOLO SUS PROPIOS DATOS — VACÍO AL INICIO)
+      // =======================================================================
+      function loadVecinoLocalData() {
+        try {
+          const p = JSON.parse(localStorage.getItem(LS_KEYS.PROFILE) || 'null');
+          if (p && typeof p === 'object') {
+            state.profile = {
+              name: p.name || '',
+              barrio: p.barrio || 'Barrio Este',
+              whatsapp: p.whatsapp || '',
+              dni: p.dni || ''
+            };
+          }
+        } catch (e) {}
+
+        try {
+          const c = JSON.parse(localStorage.getItem(LS_KEYS.CONTACTS) || '[]');
+          if (Array.isArray(c)) state.contacts = c;
+        } catch (e) {}
+
+        try {
+          const h = JSON.parse(localStorage.getItem(LS_KEYS.MY_HISTORY) || '[]');
+          if (Array.isArray(h)) state.myHistory = h;
+        } catch (e) {}
+
+        try {
+          state.myActiveTripId = localStorage.getItem(LS_KEYS.MY_TRIP_ID) || null;
+        } catch (e) {}
+      }
+
+      function persistProfile() {
+        try { localStorage.setItem(LS_KEYS.PROFILE, JSON.stringify(state.profile)); } catch (e) {}
+      }
+      function persistContacts() {
+        try { localStorage.setItem(LS_KEYS.CONTACTS, JSON.stringify(state.contacts)); } catch (e) {}
+      }
+      function persistMyHistory() {
+        try { localStorage.setItem(LS_KEYS.MY_HISTORY, JSON.stringify(state.myHistory)); } catch (e) {}
+      }
+
+      // =======================================================================
+      // CONTROL DE ACCESO POR CÓDIGOS (CANDADO 🔒)
+      // =======================================================================
+      function openAccessModal() {
+        const input = document.getElementById('access-code-input');
+        input.value = '';
+        input.type = 'password';
+        document.getElementById('access-eye-icon').textContent = '👁️';
+        document.getElementById('access-error-msg').classList.add('hidden');
+        document.getElementById('access-modal').classList.remove('hidden');
+        setTimeout(function () { input.focus(); }, 80);
+      }
+
+      function closeAccessModal() {
+        document.getElementById('access-modal').classList.add('hidden');
+      }
+
+      function toggleAccessPassword() {
+        const input = document.getElementById('access-code-input');
+        const icon = document.getElementById('access-eye-icon');
+        if (input.type === 'password') {
+          input.type = 'text';
+          icon.textContent = '🙈';
+        } else {
+          input.type = 'password';
+          icon.textContent = '👁️';
+        }
+      }
+
+      async function submitAccessCode(e) {
+        e.preventDefault();
+        const code = document.getElementById('access-code-input').value.trim();
+        const opName = document.getElementById('access-operator-name').value.trim();
+        const err = document.getElementById('access-error-msg');
+        if (!code) return;
+
+        if (code === state.config.creatorCode) {
+          state.authRole = 'creador';
+          state.operatorName = opName || 'Creador';
+          state.staffPanel = 'operador';
+          err.classList.add('hidden');
+          closeAccessModal();
+          await cloudAddLog('Ingreso', 'Acceso Creador (' + state.operatorName + ')');
+          enterStaffView();
+          showToast('Acceso total de Creador habilitado.', 'green');
+        } else if (code === state.config.operatorCode) {
+          state.authRole = 'operador';
+          state.operatorName = opName || 'Operador';
+          state.staffPanel = 'operador';
+          err.classList.add('hidden');
+          closeAccessModal();
+          await cloudAddLog('Ingreso', 'Acceso Operador (' + state.operatorName + ')');
+          enterStaffView();
+          showToast('Sesión iniciada como Operador (' + state.operatorName + ').', 'green');
+        } else {
+          err.classList.remove('hidden');
+          document.getElementById('access-code-input').value = '';
+          document.getElementById('access-code-input').focus();
+        }
+      }
+
+      function enterStaffView() {
+        document.getElementById('shell-vecino').classList.add('hidden');
+        document.getElementById('shell-staff').classList.remove('hidden');
+
+        const isCreator = state.authRole === 'creador';
+        const roleLbl = document.getElementById('staff-role-label');
+        roleLbl.textContent = isCreator
+          ? 'Creador - Acceso Total (' + state.operatorName + ')'
+          : 'Operador en Guardia: ' + state.operatorName;
+        roleLbl.className = isCreator
+          ? 'text-xs font-extrabold text-amber-300 mt-0.5 truncate'
+          : 'text-xs font-bold text-emerald-300 mt-0.5 truncate';
+
+        document.getElementById('creator-switcher').classList.toggle('hidden', !isCreator);
+        document.getElementById('btn-go-firebase-cfg').classList.toggle('hidden', !isCreator);
+
+        switchStaffPanel('operador');
+        pullCloudState();
+      }
+
+      function switchStaffPanel(panel) {
+        if (panel === 'admin' && state.authRole !== 'creador') {
+          showToast('Acceso exclusivo del Creador.', 'red');
+          return;
+        }
+        state.staffPanel = panel;
+        document.getElementById('panel-operador').classList.toggle('hidden', panel !== 'operador');
+        document.getElementById('panel-admin').classList.toggle('hidden', panel !== 'admin');
+
+        const bOp = document.getElementById('stab-operador');
+        const bAd = document.getElementById('stab-admin');
+        if (bOp && bAd) {
+          bOp.className = panel === 'operador'
+            ? 'min-h-[42px] px-3 rounded-xl bg-white text-ink font-black text-xs sm:text-sm flex items-center justify-center gap-1.5'
+            : 'min-h-[42px] px-3 rounded-xl text-gray-300 hover:text-white font-black text-xs sm:text-sm flex items-center justify-center gap-1.5';
+          bAd.className = panel === 'admin'
+            ? 'min-h-[42px] px-3 rounded-xl bg-white text-ink font-black text-xs sm:text-sm flex items-center justify-center gap-1.5'
+            : 'min-h-[42px] px-3 rounded-xl text-gray-300 hover:text-white font-black text-xs sm:text-sm flex items-center justify-center gap-1.5';
+        }
+
+        if (panel === 'operador') {
+          setTimeout(function () {
+            initOperatorMap();
+            renderOperatorMapMarkers();
+          }, 120);
+        } else {
+          renderAdminPanel();
+        }
+      }
+
+      function logoutStaff() {
+        state.authRole = 'vecino';
+        state.staffPanel = 'operador';
+        state.operatorName = '';
+        document.getElementById('op-critical-banner').classList.add('hidden');
+        document.getElementById('shell-staff').classList.add('hidden');
+        document.getElementById('shell-vecino').classList.remove('hidden');
+        showToast('Sesión cerrada.', 'dark');
+      }
+
+      // =======================================================================
+      // VECINO: PESTAÑAS, PERFIL, CONTACTOS, VIAJE, GPS REAL Y PÁNICO SILENCIOSO
+      // =======================================================================
+      function switchVecinoTab(tab) {
+        state.vecinoTab = tab;
+        document.querySelectorAll('.vtab-panel').forEach(function (el) { el.classList.add('hidden'); });
+        document.getElementById('vtab-' + tab).classList.remove('hidden');
+
+        document.querySelectorAll('.vnav-btn').forEach(function (btn) {
+          const active = btn.getAttribute('data-vtab') === tab;
+          btn.className = active
+            ? 'vnav-btn min-h-[58px] rounded-2xl flex flex-col items-center justify-center gap-0.5 bg-ink text-white font-extrabold text-[11px]'
+            : 'vnav-btn min-h-[58px] rounded-2xl flex flex-col items-center justify-center gap-0.5 text-gray-700 font-bold text-[11px]';
+        });
+
+        if (tab === 'barrio') renderBarrioStats();
+        if (tab === 'recorridos') renderVecinoHistory();
+      }
+
+      function saveProfile(e) {
+        e.preventDefault();
+        state.profile = {
+          name: document.getElementById('p-name').value.trim(),
+          barrio: document.getElementById('p-barrio').value,
+          whatsapp: document.getElementById('p-whatsapp').value.trim(),
+          dni: document.getElementById('p-dni').value.trim()
+        };
+        persistProfile();
+        renderVecinoProfile();
+        showToast('Perfil guardado correctamente.', 'green');
+      }
+
+      function addContact(e) {
+        e.preventDefault();
+        const name = document.getElementById('c-name').value.trim();
+        const relation = document.getElementById('c-relation').value.trim();
+        const phone = document.getElementById('c-phone').value.trim();
+        if (!name || !relation || !phone) return;
+
+        state.contacts.push({ id: uid('cnt'), name: name, relation: relation, phone: phone });
+        persistContacts();
+        document.getElementById('c-name').value = '';
+        document.getElementById('c-relation').value = '';
+        document.getElementById('c-phone').value = '';
+        renderContacts();
+        syncContactsIntoActiveTrip();
+        showToast('Contacto guardado.', 'green');
+      }
+
+      function moveContact(index, delta) {
+        const target = index + delta;
+        if (target < 0 || target >= state.contacts.length) return;
+        const temp = state.contacts[index];
+        state.contacts[index] = state.contacts[target];
+        state.contacts[target] = temp;
+        persistContacts();
+        renderContacts();
+        syncContactsIntoActiveTrip();
+      }
+
+      function deleteContact(index) {
+        state.contacts.splice(index, 1);
+        persistContacts();
+        renderContacts();
+        syncContactsIntoActiveTrip();
+        showToast('Contacto eliminado.', 'dark');
+      }
+
+      function serializeContactsForTrip() {
+        return state.contacts.map(function (c, idx) {
+          return { priority: idx + 1, name: c.name, relation: c.relation, phone: c.phone };
+        });
+      }
+
+      function syncContactsIntoActiveTrip() {
+        const trip = getMyActiveTrip();
+        if (trip) {
+          cloudPatchTrip(trip.id, { contacts: serializeContactsForTrip() });
+        }
+      }
+
+      function openStartTripForm() {
+        document.getElementById('vecino-idle-view').classList.add('hidden');
+        document.getElementById('vecino-start-form').classList.remove('hidden');
+        document.getElementById('trip-barrio').value = state.profile.barrio || 'Barrio Este';
+        document.getElementById('trip-legal-check').checked = false;
+
+        const missingProfile = !state.profile.name.trim() || !state.profile.whatsapp.trim();
+        const block = document.getElementById('inline-profile-block');
+        block.classList.toggle('hidden', !missingProfile);
+        if (missingProfile) {
+          document.getElementById('inline-name').value = state.profile.name;
+          document.getElementById('inline-whatsapp').value = state.profile.whatsapp;
+        }
+        updateStartTripBtn();
+      }
+
+      function closeStartTripForm() {
+        document.getElementById('vecino-start-form').classList.add('hidden');
+        document.getElementById('vecino-idle-view').classList.remove('hidden');
+      }
+
+      function selectTripMode(mode) {
+        state.draftTrip.mode = mode;
+        document.querySelectorAll('.mode-btn').forEach(function (btn) {
+          const active = btn.getAttribute('data-mode') === mode;
+          btn.className = active
+            ? 'mode-btn min-h-[58px] p-3 rounded-2xl border-2 border-ink bg-ink text-white font-bold text-sm text-left flex items-center gap-2'
+            : 'mode-btn min-h-[58px] p-3 rounded-2xl border-2 border-gray-300 bg-white text-ink font-bold text-sm text-left flex items-center gap-2';
+        });
+      }
+
+      function selectTripEta(mins) {
+        state.draftTrip.etaMinutes = mins;
+        document.querySelectorAll('.eta-btn').forEach(function (btn) {
+          const active = Number(btn.getAttribute('data-eta')) === mins;
+          const spanClass = btn.classList.contains('col-span-2') ? 'col-span-2 ' : '';
+          btn.className = active
+            ? 'eta-btn ' + spanClass + 'min-h-[48px] rounded-2xl border-2 border-ink bg-ink text-white font-extrabold text-sm'
+            : 'eta-btn ' + spanClass + 'min-h-[48px] rounded-2xl border-2 border-gray-300 bg-white text-ink font-extrabold text-sm';
+        });
+      }
+
+      function updateStartTripBtn() {
+        const checked = document.getElementById('trip-legal-check').checked;
+        const btn = document.getElementById('btn-start-trip');
+        btn.disabled = !checked;
+        btn.className = checked
+          ? 'w-full min-h-[60px] rounded-2xl bg-safe text-white font-black text-lg shadow-md active:scale-[0.98] transition cursor-pointer'
+          : 'w-full min-h-[60px] rounded-2xl bg-gray-300 text-gray-500 font-black text-lg transition cursor-not-allowed';
+      }
+
+      async function confirmStartTrip() {
+        if (!document.getElementById('trip-legal-check').checked) {
+          showToast('Debés tildar que aceptás compartir tu ubicación durante el viaje.', 'amber');
+          return;
+        }
+
+        const block = document.getElementById('inline-profile-block');
+        if (!block.classList.contains('hidden')) {
+          const iName = document.getElementById('inline-name').value.trim();
+          const iWa = document.getElementById('inline-whatsapp').value.trim();
+          if (!iName || !iWa) {
+            showToast('Completá tu Nombre y WhatsApp para poder acompañarte.', 'amber');
+            return;
+          }
+          state.profile.name = iName;
+          state.profile.whatsapp = iWa;
+          state.profile.barrio = document.getElementById('trip-barrio').value;
+          persistProfile();
+          renderVecinoProfile();
+        }
+
+        const barrio = document.getElementById('trip-barrio').value;
+        const destination = document.getElementById('trip-destination').value.trim() || 'Mi casa';
+        state.gpsStateText = 'Obteniendo permiso y señal GPS...';
+        const coords = await getCurrentPositionOnce();
+
+        const now = Date.now();
+        const tripId = uid('trip');
+        const tripObj = {
+          id: tripId,
+          deviceId: state.deviceId,
+          neighborName: state.profile.name,
+          whatsapp: state.profile.whatsapp,
+          barrio: barrio,
+          destination: destination,
+          mode: state.draftTrip.mode,
+          etaMinutes: state.draftTrip.etaMinutes,
+          startedAt: now,
+          etaEndsAt: now + state.draftTrip.etaMinutes * 60 * 1000,
+          lastGpsAt: coords ? now : null,
+          lastMovedAt: now,
+          lat: coords ? coords.lat : null,
+          lng: coords ? coords.lng : null,
+          gpsAccuracy: coords ? coords.accuracy : null,
+          panic: false,
+          audioStatus: 'none',
+          audioDataUrl: '',
+          contacts: serializeContactsForTrip(),
+          messages: {},
+          events: {}
+        };
+
+        state.myActiveTripId = tripId;
+        state.lastReadOpMsgCount = 0;
+        try { localStorage.setItem(LS_KEYS.MY_TRIP_ID, tripId); } catch (e) {}
+        document.getElementById('vecino-start-form').classList.add('hidden');
+
+        const saved = await cloudPutTrip(tripObj);
+        startGpsTracking(tripId);
+        if (saved) {
+          showToast('Acompañamiento iniciado. Ya estás en vivo con el Centro.', 'green');
+        }
+      }
+
+      // Geolocalización real (watchPosition + envío periódico a Firebase)
+      function getCurrentPositionOnce() {
+        return new Promise(function (resolve) {
+          if (!navigator.geolocation) {
+            state.gpsStateText = 'Este dispositivo no soporta GPS.';
+            resolve(null);
+            return;
+          }
+          let finished = false;
+          const timer = setTimeout(function () {
+            if (!finished) {
+              finished = true;
+              state.gpsStateText = 'Esperando permiso/señal GPS...';
+              resolve(null);
+            }
+          }, 4500);
+
+          navigator.geolocation.getCurrentPosition(
+            function (pos) {
+              if (!finished) {
+                finished = true;
+                clearTimeout(timer);
+                const c = {
+                  lat: Number(pos.coords.latitude.toFixed(6)),
+                  lng: Number(pos.coords.longitude.toFixed(6)),
+                  accuracy: Math.round(pos.coords.accuracy || 0)
+                };
+                state.latestGps = c;
+                state.gpsStateText = '📡 Compartiendo GPS en vivo';
+                resolve(c);
+              }
+            },
+            function (err) {
+              if (!finished) {
+                finished = true;
+                clearTimeout(timer);
+                state.gpsStateText = (err && err.code === 1)
+                  ? '⚠️ Permiso de GPS denegado — habilitá Ubicación'
+                  : '⏳ Esperando señal GPS...';
+                resolve(null);
+              }
+            },
+            { enableHighAccuracy: true, timeout: 4000, maximumAge: 5000 }
+          );
+        });
+      }
+
+      function startGpsTracking(tripId) {
+        stopGpsTracking();
+        if (!navigator.geolocation) return;
+
+        try {
+          state.gpsWatchId = navigator.geolocation.watchPosition(
+            function (pos) {
+              state.latestGps = {
+                lat: Number(pos.coords.latitude.toFixed(6)),
+                lng: Number(pos.coords.longitude.toFixed(6)),
+                accuracy: Math.round(pos.coords.accuracy || 0)
+              };
+              state.gpsStateText = '📡 Compartiendo GPS en vivo';
+              renderVecinoActiveTrip();
+            },
+            function (err) {
+              state.gpsStateText = (err && err.code === 1)
+                ? '⚠️ Permiso de GPS denegado — habilitá Ubicación'
+                : '⏳ Esperando señal GPS...';
+              renderVecinoActiveTrip();
+            },
+            { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 }
+          );
+        } catch (e) {}
+
+        state.gpsSyncTimer = setInterval(function () {
+          const trip = state.trips[tripId];
+          if (!trip || !state.latestGps) return;
+
+          const moved = (typeof trip.lat !== 'number' || typeof trip.lng !== 'number')
+            || Math.abs(trip.lat - state.latestGps.lat) > 0.00012
+            || Math.abs(trip.lng - state.latestGps.lng) > 0.00012;
+
+          const patch = {
+            lat: state.latestGps.lat,
+            lng: state.latestGps.lng,
+            gpsAccuracy: state.latestGps.accuracy,
+            lastGpsAt: Date.now()
+          };
+          if (moved) patch.lastMovedAt = Date.now();
+          cloudPatchTrip(tripId, patch);
+        }, 7000);
+      }
+
+      function stopGpsTracking() {
+        if (state.gpsWatchId !== null && navigator.geolocation) {
+          try { navigator.geolocation.clearWatch(state.gpsWatchId); } catch (e) {}
+          state.gpsWatchId = null;
+        }
+        if (state.gpsSyncTimer) {
+          clearInterval(state.gpsSyncTimer);
+          state.gpsSyncTimer = null;
+        }
+      }
+
+      async function forceGpsUpdate() {
+        const trip = getMyActiveTrip();
+        if (!trip) return;
+        const c = await getCurrentPositionOnce();
+        if (c) {
+          await cloudPatchTrip(trip.id, {
+            lat: c.lat,
+            lng: c.lng,
+            gpsAccuracy: c.accuracy,
+            lastGpsAt: Date.now(),
+            lastMovedAt: Date.now()
+          });
+          showToast('Ubicación GPS actualizada en vivo.', 'green');
+        } else {
+          showToast('Esperando permiso o señal GPS. Revisá la ubicación del celular.', 'amber');
+        }
+      }
+
+      async function vecinoCompleteTrip() {
+        const trip = getMyActiveTrip();
+        if (!trip) return;
+
+        stopGpsTracking();
+        const now = formatTimeNow();
+        const sev = computeTripSeverity(trip);
+
+        // 1. Guardar solo estadística anónima SIN coordenadas GPS
+        const rec = {
+          barrio: trip.barrio,
+          fecha: now.dateStr,
+          hora: now.hmStr,
+          hourNum: now.hourNum,
+          modo: trip.mode,
+          resultado: 'Llegó bien',
+          hadAlert: sev.level === 'panic' || sev.level === 'red'
+        };
+        state.myHistory.unshift(rec);
+        persistMyHistory();
+        await cloudAddStat(rec);
+
+        // 2. Eliminar inmediatamente el viaje activo y todas las coordenadas GPS de Firebase
+        const id = trip.id;
+        state.myActiveTripId = null;
+        state.lastReadOpMsgCount = 0;
+        try { localStorage.removeItem(LS_KEYS.MY_TRIP_ID); } catch (e) {}
+        hideSilentPanicBox();
+        await cloudDeleteTrip(id);
+
+        showModal({
+          title: '✅ ¡Llegaste bien!',
+          body: 'Cerramos tu viaje y borramos tus coordenadas GPS de la nube. Solo quedó guardado el registro anónimo de barrio y horario.',
+          actions: [{ label: 'Entendido', className: 'w-full min-h-[50px] rounded-2xl bg-safe text-white font-black text-base' }]
+        });
+      }
+
+      // =======================================================================
+      // BOTÓN DE PÁNICO 100% SILENCIOSO + GRABACIÓN REAL DE 10 SEGUNDOS
+      // =======================================================================
+      async function triggerSilentPanic() {
+        // CERO sonidos y CERO vibración en el teléfono del vecino
+        const coords = await getCurrentPositionOnce();
+        let trip = getMyActiveTrip();
+        const now = Date.now();
+
+        if (!trip) {
+          const tripId = uid('panic');
+          trip = {
+            id: tripId,
+            deviceId: state.deviceId,
+            neighborName: state.profile.name.trim() || 'Vecino sin nombre registrado',
+            whatsapp: state.profile.whatsapp.trim() || '',
+            barrio: state.profile.barrio || 'Villa Regina',
+            destination: 'EMERGENCIA SILENCIOSA',
+            mode: 'Botón de Pánico',
+            etaMinutes: 0,
+            startedAt: now,
+            etaEndsAt: now,
+            lastGpsAt: coords ? now : null,
+            lastMovedAt: now,
+            lat: coords ? coords.lat : null,
+            lng: coords ? coords.lng : null,
+            gpsAccuracy: coords ? coords.accuracy : null,
+            panic: true,
+            panicAt: now,
+            audioStatus: 'recording',
+            audioDataUrl: '',
+            contacts: serializeContactsForTrip(),
+            messages: {},
+            events: {}
+          };
+          state.myActiveTripId = tripId;
+          try { localStorage.setItem(LS_KEYS.MY_TRIP_ID, tripId); } catch (e) {}
+          await cloudPutTrip(trip);
+          startGpsTracking(tripId);
+        } else {
+          const patch = {
+            panic: true,
+            panicAt: now,
+            audioStatus: 'recording',
+            contacts: serializeContactsForTrip()
+          };
+          if (coords) {
+            patch.lat = coords.lat;
+            patch.lng = coords.lng;
+            patch.gpsAccuracy = coords.accuracy;
+            patch.lastGpsAt = now;
+          }
+          await cloudPatchTrip(trip.id, patch);
+        }
+
+        await cloudAddTripMessage(trip.id, 'vecino', '🚨 [ALERTA SILENCIOSA] Se activó el botón de emergencia.');
+        showSilentPanicBox();
+        recordSilentAudio10s(trip.id);
+      }
+
+      function showSilentPanicBox() {
+        const box = document.getElementById('silent-panic-box');
+        const desc = document.getElementById('panic-box-desc');
+        const bar = document.getElementById('panic-audio-bar');
+        const timerEl = document.getElementById('panic-audio-timer');
+
+        box.classList.remove('hidden');
+        desc.textContent = 'Tu teléfono permanece en silencio. Enviando ubicación y grabando 10s de audio ambiental para el Centro.';
+        bar.style.width = '5%';
+        timerEl.textContent = '0s / 10s';
+
+        if (state.panicTimer) clearInterval(state.panicTimer);
+        let secs = 0;
+        state.panicTimer = setInterval(function () {
+          secs += 1;
+          bar.style.width = Math.min(100, secs * 10) + '%';
+          timerEl.textContent = secs + 's / 10s';
+          if (secs >= 10) {
+            clearInterval(state.panicTimer);
+            state.panicTimer = null;
+            desc.textContent = 'Alerta silenciosa, ubicación y audio de 10 segundos enviados al Centro de Monitoreo.';
+          }
+        }, 1000);
+      }
+
+      function hideSilentPanicBox() {
+        document.getElementById('silent-panic-box').classList.add('hidden');
+        if (state.panicTimer) {
+          clearInterval(state.panicTimer);
+          state.panicTimer = null;
+        }
+      }
+
+      async function recordSilentAudio10s(tripId) {
+        if (state.isRecordingPanic) return;
+        state.isRecordingPanic = true;
+
+        try {
+          if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || typeof MediaRecorder === 'undefined') {
+            throw new Error('MediaRecorder no disponible');
+          }
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          const mimeCandidates = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg'];
+          const chosenMime = mimeCandidates.find(function (m) { return MediaRecorder.isTypeSupported(m); }) || '';
+          const options = chosenMime
+            ? { mimeType: chosenMime, audioBitsPerSecond: 16000 }
+            : { audioBitsPerSecond: 16000 };
+
+          const recorder = new MediaRecorder(stream, options);
+          const chunks = [];
+
+          recorder.ondataavailable = function (ev) {
+            if (ev.data && ev.data.size > 0) chunks.push(ev.data);
+          };
+
+          recorder.onstop = function () {
+            stream.getTracks().forEach(function (tr) { tr.stop(); });
+            state.isRecordingPanic = false;
+            const blob = new Blob(chunks, { type: chosenMime || 'audio/webm' });
+            const reader = new FileReader();
+            reader.onloadend = function () {
+              if (typeof reader.result === 'string' && reader.result.length > 30) {
+                cloudPatchTrip(tripId, {
+                  audioStatus: 'ready',
+                  audioDataUrl: reader.result,
+                  audioCapturedAt: Date.now()
+                });
+              } else {
+                cloudPatchTrip(tripId, { audioStatus: 'unavailable' });
+              }
+            };
+            reader.readAsDataURL(blob);
+          };
+
+          recorder.start();
+          setTimeout(function () {
+            if (recorder.state !== 'inactive') recorder.stop();
+          }, 10000);
+        } catch (err) {
+          state.isRecordingPanic = false;
+          cloudPatchTrip(tripId, { audioStatus: 'unavailable' });
+        }
+      }
+
+      // Chat del Vecino
+      function markVecinoChatRead() {
+        const myTrip = getMyActiveTrip();
+        if (!myTrip) return;
+        const opMsgs = Object.values(myTrip.messages || {}).filter(function (m) { return m.sender === 'operator'; });
+        state.lastReadOpMsgCount = opMsgs.length;
+        updateVecinoUnreadBadge(false);
+      }
+
+      function updateVecinoUnreadBadge(hasUnread) {
+        const card = document.getElementById('v-chat-card');
+        const badge = document.getElementById('v-chat-unread-badge');
+        const liveTag = document.getElementById('v-chat-live-tag');
+        if (!card || !badge || !liveTag) return;
+        badge.classList.toggle('hidden', !hasUnread);
+        liveTag.classList.toggle('hidden', hasUnread);
+        if (hasUnread) card.classList.add('chat-unread-ring');
+        else card.classList.remove('chat-unread-ring');
+      }
+
+      async function handleVecinoChatForm(e) {
+        e.preventDefault();
+        const input = document.getElementById('v-chat-input');
+        const text = input.value.trim();
+        if (!text) return;
+        input.value = '';
+        markVecinoChatRead();
+        await sendVecinoChat(text);
+      }
+
+      async function sendVecinoChat(text) {
+        const trip = getMyActiveTrip();
+        if (!trip) return;
+        markVecinoChatRead();
+        await cloudAddTripMessage(trip.id, 'vecino', text);
+      }
+
+      // =======================================================================
+      // PANEL DEL OPERADOR: ALARMA, MAPA LEAFLET, ASISTENCIA, CHAT Y CIERRE
+      // =======================================================================
+      function toggleOperatorMute() {
+        state.operatorMuted = !state.operatorMuted;
+        const btn = document.getElementById('btn-mute-alarm');
+        btn.textContent = state.operatorMuted ? '🔇 Silenciada' : '🔊 Alarma';
+      }
+
+      function playEmergencyBeep() {
+        if (state.operatorMuted) return;
+        try {
+          const AudioCtx = window.AudioContext || window.webkitAudioContext;
+          if (!AudioCtx) return;
+          const ctx = new AudioCtx();
+          const now = ctx.currentTime;
+          [0, 0.22].forEach(function (offset) {
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(880, now + offset);
+            gain.gain.setValueAtTime(0.12, now + offset);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + offset + 0.16);
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            osc.start(now + offset);
+            osc.stop(now + offset + 0.17);
+          });
+          setTimeout(function () { if (ctx.close) ctx.close().catch(function () {}); }, 700);
+        } catch (e) {}
+      }
+
+      function checkOperatorEmergencyAlarm() {
+        const banner = document.getElementById('op-critical-banner');
+        const bannerText = document.getElementById('op-critical-banner-text');
+        if (state.authRole === 'vecino') {
+          banner.classList.add('hidden');
+          return;
+        }
+
+        const criticals = getSortedTrips().filter(function (t) {
+          const lv = computeTripSeverity(t).level;
+          return lv === 'panic' || lv === 'red';
+        });
+
+        if (criticals.length === 0) {
+          banner.classList.add('hidden');
+          return;
+        }
+
+        const top = criticals[0];
+        const sev = computeTripSeverity(top);
+        banner.classList.remove('hidden');
+        bannerText.textContent = sev.label + ': ' + top.neighborName + ' (' + top.barrio + ') — ' + sev.reason;
+
+        if (Date.now() - state.lastAlarmBeepAt > 6000) {
+          state.lastAlarmBeepAt = Date.now();
+          playEmergencyBeep();
+        }
+      }
+
+      function focusMostCriticalTrip() {
+        const top = getSortedTrips()[0];
+        if (!top) return;
+        if (state.staffPanel !== 'operador') switchStaffPanel('operador');
+        selectOperatorTrip(top.id, true);
+      }
+
+      function selectOperatorTrip(tripId, scrollIntoView) {
+        state.selectedTripId = tripId;
+        state.lastOpChatCount = 0;
+        renderOperatorPanel();
+        const trip = state.trips[tripId];
+        if (trip && state.mapOp && typeof trip.lat === 'number' && typeof trip.lng === 'number') {
+          try { state.mapOp.setView([trip.lat, trip.lng], 15, { animate: true }); } catch (e) {}
+        }
+        if (scrollIntoView) {
+          const anchor = document.getElementById('op-assist-anchor');
+          if (anchor) anchor.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }
+
+      async function handleOperatorChatForm(e) {
+        e.preventDefault();
+        const input = document.getElementById('op-chat-input');
+        const text = input.value.trim();
+        if (!text) return;
+        input.value = '';
+        await sendOperatorChat(text);
+      }
+
+      async function sendOperatorChat(text) {
+        if (!state.selectedTripId || !state.trips[state.selectedTripId]) {
+          showToast('Seleccioná un vecino primero.', 'amber');
+          return;
+        }
+        await cloudAddTripMessage(state.selectedTripId, 'operator', text);
+      }
+
+      function logDerivation(actionLabel) {
+        if (!state.selectedTripId || !state.trips[state.selectedTripId]) return;
+        cloudAddTripEvent(state.selectedTripId, actionLabel);
+        showToast('Registrado: ' + actionLabel, 'dark');
+      }
+
+      async function operatorCloseTrip(resultadoLabel) {
+        const trip = state.selectedTripId ? state.trips[state.selectedTripId] : null;
+        if (!trip) return;
+
+        const now = formatTimeNow();
+        const sev = computeTripSeverity(trip);
+        await cloudAddStat({
+          barrio: trip.barrio,
+          fecha: now.dateStr,
+          hora: now.hmStr,
+          hourNum: now.hourNum,
+          modo: trip.mode,
+          resultado: resultadoLabel,
+          hadAlert: sev.level === 'panic' || sev.level === 'red'
+        });
+        await cloudAddLog('Cierre', trip.neighborName + ' (' + trip.barrio + ') cerrado como "' + resultadoLabel + '"');
+        await cloudDeleteTrip(trip.id);
+        showToast('Viaje marcado como "' + resultadoLabel + '" y GPS eliminado.', 'green');
+      }
+
+      function confirmOperatorCancelTrip() {
+        const trip = state.selectedTripId ? state.trips[state.selectedTripId] : null;
+        if (!trip) return;
+        showModal({
+          title: '¿Cancelar y eliminar este viaje?',
+          body: 'Se eliminará por completo a "' + trip.neighborName + '" de Firebase y se borrarán sus coordenadas GPS inmediatamente.',
+          actions: [
+            { label: 'Volver', className: 'min-h-[46px] px-4 rounded-2xl border-2 border-gray-300 text-ink font-black text-sm' },
+            {
+              label: 'Sí, eliminar viaje',
+              className: 'min-h-[46px] px-4 rounded-2xl bg-panic text-white font-black text-sm',
+              onClick: async function () {
+                await cloudAddLog('Cancelación', 'Viaje de ' + trip.neighborName + ' (' + trip.barrio + ') eliminado por operador');
+                await cloudDeleteTrip(trip.id);
+                showToast('Viaje cancelado y eliminado de la nube.', 'dark');
+              }
+            }
+          ]
+        });
+      }
+
+      // Mapa Leaflet con resguardo try/catch
+      function initOperatorMap() {
+        const el = document.getElementById('map-operador');
+        const fallback = document.getElementById('map-operador-fallback');
+        if (!el) return;
+
+        if (typeof L === 'undefined') {
+          el.classList.add('hidden');
+          if (fallback) fallback.classList.remove('hidden');
+          return;
+        }
+
+        try {
+          el.classList.remove('hidden');
+          if (fallback) fallback.classList.add('hidden');
+          if (!state.mapOp) {
+            state.mapOp = L.map('map-operador', { zoomControl: true }).setView(VILLA_REGINA_CENTER, 14);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+              attribution: '&copy; OpenStreetMap'
+            }).addTo(state.mapOp);
+          }
+          state.mapOp.invalidateSize();
+        } catch (err) {
+          el.classList.add('hidden');
+          if (fallback) fallback.classList.remove('hidden');
+        }
+      }
+
+      function recenterOperatorMap() {
+        if (!state.mapOp || typeof L === 'undefined') return;
+        try {
+          const withGps = getSortedTrips().filter(function (t) {
+            return typeof t.lat === 'number' && typeof t.lng === 'number';
+          });
+          if (withGps.length === 1) {
+            state.mapOp.setView([withGps[0].lat, withGps[0].lng], 15);
+          } else if (withGps.length > 1) {
+            const bounds = L.latLngBounds(withGps.map(function (t) { return [t.lat, t.lng]; }));
+            state.mapOp.fitBounds(bounds, { padding: [35, 35] });
+          } else {
+            state.mapOp.setView(VILLA_REGINA_CENTER, 14);
+          }
+        } catch (e) {}
+      }
+
+      function renderOperatorMapMarkers() {
+        if (!state.mapOp || typeof L === 'undefined') return;
+        try {
+          Object.values(state.mapMarkers).forEach(function (m) { state.mapOp.removeLayer(m); });
+          state.mapMarkers = {};
+
+          getSortedTrips().forEach(function (trip) {
+            if (typeof trip.lat !== 'number' || typeof trip.lng !== 'number') return;
+            const sev = computeTripSeverity(trip);
+            const bg = (sev.level === 'panic' || sev.level === 'red') ? '#DC2626' : sev.level === 'yellow' ? '#EAB308' : '#059669';
+            const fg = sev.level === 'yellow' ? '#111827' : '#FFFFFF';
+            const isSel = trip.id === state.selectedTripId;
+            const size = isSel ? 40 : 32;
+            const initial = escapeHtml((trip.neighborName || 'V')[0].toUpperCase());
+
+            const icon = L.divIcon({
+              className: '',
+              html: '<div class="op-pin ' + (sev.level === 'panic' ? 'pin-pulse-red' : '') + '" style="width:' + size + 'px;height:' + size + 'px;background:' + bg + ';color:' + fg + ';' + (isSel ? 'outline:3px solid #111827;' : '') + '">' + initial + '</div>',
+              iconSize: [size, size],
+              iconAnchor: [size / 2, size / 2]
+            });
+
+            const cd = formatCountdown(trip.etaEndsAt);
+            const marker = L.marker([trip.lat, trip.lng], { icon: icon })
+              .addTo(state.mapOp)
+              .bindPopup(
+                '<div style="font-family:Inter,sans-serif;min-width:170px">' +
+                  '<strong>' + escapeHtml(trip.neighborName) + '</strong> • ' + escapeHtml(trip.barrio) + '<br/>' +
+                  '<span style="font-size:12px">Destino: ' + escapeHtml(trip.destination) + '</span><br/>' +
+                  '<span style="font-size:12px;font-weight:800;color:' + bg + '">' + sev.label + ' • ' + cd.short + '</span>' +
+                '</div>'
+              );
+            marker.on('click', function () { selectOperatorTrip(trip.id, true); });
+            state.mapMarkers[trip.id] = marker;
+          });
+        } catch (e) {}
+      }
+
+      // =======================================================================
+      // PANEL CREADOR / ADMIN: FIREBASE, EXPORTADOR HTML APK, SEGURIDAD, RESET
+      // =======================================================================
+      async function testAndSaveFirebase(e) {
+        e.preventDefault();
+        if (state.authRole !== 'creador') return;
+
+        const inputUrl = normalizeFirebaseUrl(document.getElementById('cfg-firebase-url').value);
+        const fb = document.getElementById('cfg-firebase-feedback');
+        const btn = document.getElementById('btn-test-firebase');
+
+        if (!inputUrl) {
+          showToast('Ingresá una URL válida de Firebase Realtime Database.', 'amber');
+          return;
+        }
+
+        btn.disabled = true;
+        btn.textContent = 'Probando conexión...';
+        fb.classList.add('hidden');
+
+        try {
+          const pingUrl = inputUrl + '/acompaname/_ping.json';
+          const writeRes = await fetch(pingUrl, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ok: true, at: Date.now() })
+          });
+          if (!writeRes.ok) {
+            throw new Error(explainFirebaseError(writeRes.status));
+          }
+
+          const readRes = await fetch(pingUrl + '?t=' + Date.now());
+          if (!readRes.ok) {
+            throw new Error(explainFirebaseError(readRes.status));
+          }
+
+          state.dbUrl = inputUrl;
+          try { localStorage.setItem(LS_KEYS.DB_URL, inputUrl); } catch (ex) {}
+
+          fb.className = 'text-xs font-extrabold p-3 rounded-xl bg-emerald-50 border border-safe text-emerald-900';
+          fb.textContent = '🟢 Conexión exitosa con Firebase. Lectura y escritura verificadas en vivo.';
+          fb.classList.remove('hidden');
+
+          await pullCloudState();
+          showToast('Conexión en línea verificada y guardada.', 'green');
+        } catch (err) {
+          fb.className = 'text-xs font-extrabold p-3 rounded-xl bg-red-50 border border-panic text-panic';
+          fb.textContent = '🔴 ' + err.message;
+          fb.classList.remove('hidden');
+          markCloudError(err);
+        } finally {
+          btn.disabled = false;
+          btn.textContent = '🔌 Probar y Guardar Conexión';
+        }
+      }
+
+      function downloadApkReadyHtml() {
+        if (state.authRole !== 'creador') return;
+        const urlToEmbed = normalizeFirebaseUrl(document.getElementById('cfg-firebase-url').value) || state.dbUrl;
+        if (!urlToEmbed) {
+          showToast('Ingresá tu URL de Firebase primero.', 'amber');
+          return;
+        }
+
+        const safeUrl = urlToEmbed.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+        const exportedHtml = CLEAN_SOURCE_HTML.replace(
+          /const\s+DEFAULT_FIREBASE_URL\s*=\s*["'][^"']*["']\s*;/,
+          'const DEFAULT_FIREBASE_URL = "' + safeUrl + '";'
+        );
+
+        const blob = new Blob([exportedHtml], { type: 'text/html;charset=utf-8' });
+        const blobUrl = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = blobUrl;
+        a.download = 'acompaname_en_vivo.html';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(function () { URL.revokeObjectURL(blobUrl); }, 2500);
+        showToast('Descargado acompaname_en_vivo.html con tu Firebase fijo.', 'green');
+      }
+
+      async function saveSecurityConfig(e) {
+        e.preventDefault();
+        if (state.authRole !== 'creador') return;
+
+        const opCode = document.getElementById('cfg-op-code').value.trim();
+        const crCode = document.getElementById('cfg-creator-code').value.trim();
+        const instName = document.getElementById('cfg-inst-name').value.trim() || 'Programa Vecinal • Jacinto';
+        const photoUrl = document.getElementById('cfg-jacinto-url').value.trim();
+
+        if (opCode.length < 4 || crCode.length < 4) {
+          showToast('Los códigos deben tener al menos 4 caracteres.', 'amber');
+          return;
+        }
+        if (opCode === crCode) {
+          showToast('El código de Operador y el de Creador deben ser distintos.', 'red');
+          return;
+        }
+
+        const ok = await cloudSaveConfig({
+          operatorCode: opCode,
+          creatorCode: crCode,
+          institutionName: instName,
+          jacintoPhotoUrl: photoUrl
+        });
+        if (ok) {
+          await cloudAddLog('Seguridad', 'Configuración de claves/perfil institucional actualizada');
+          showToast('Configuración guardada en la nube.', 'green');
+        }
+      }
+
+      function confirmResetTrips() {
+        if (state.authRole !== 'creador') return;
+        showModal({
+          title: '¿Borrar todos los viajes activos?',
+          body: 'Se eliminarán todos los viajes y alertas activas en Firebase ahora mismo. Las estadísticas anónimas y tus claves se conservan.',
+          actions: [
+            { label: 'Cancelar', className: 'min-h-[46px] px-4 rounded-2xl border-2 border-gray-300 text-ink font-black text-sm' },
+            {
+              label: 'Sí, borrar viajes',
+              className: 'min-h-[46px] px-4 rounded-2xl bg-panic text-white font-black text-sm',
+              onClick: async function () {
+                state.trips = {};
+                state.selectedTripId = null;
+                state.myActiveTripId = null;
+                try { localStorage.removeItem(LS_KEYS.MY_TRIP_ID); } catch (e) {}
+                await fbRequest('trips', 'DELETE').catch(function () {});
+                await cloudAddLog('Limpieza', 'Todos los viajes activos eliminados por Creador');
+                renderAll();
+                showToast('Viajes activos limpiados.', 'green');
+              }
+            }
+          ]
+        });
+      }
+
+      function confirmResetStats() {
+        if (state.authRole !== 'creador') return;
+        showModal({
+          title: '¿Reiniciar estadísticas y registros?',
+          body: 'Se pondrán en cero todas las estadísticas anónimas (/stats) y el historial de accesos (/logs) en Firebase. Tus códigos y URL se conservan.',
+          actions: [
+            { label: 'Cancelar', className: 'min-h-[46px] px-4 rounded-2xl border-2 border-gray-300 text-ink font-black text-sm' },
+            {
+              label: 'Sí, reiniciar a cero',
+              className: 'min-h-[46px] px-4 rounded-2xl bg-panic text-white font-black text-sm',
+              onClick: async function () {
+                state.stats = {};
+                state.logs = {};
+                await Promise.all([
+                  fbRequest('stats', 'DELETE').catch(function () {}),
+                  fbRequest('logs', 'DELETE').catch(function () {})
+                ]);
+                renderAll();
+                showToast('Estadísticas reiniciadas a cero.', 'green');
+              }
+            }
+          ]
+        });
+      }
+
+      // =======================================================================
+      // RENDERIZADO DE INTERFAZ
+      // =======================================================================
+      function getMyActiveTrip() {
+        if (state.myActiveTripId && state.trips[state.myActiveTripId]) {
+          return state.trips[state.myActiveTripId];
+        }
+        return Object.values(state.trips).find(function (t) { return t.deviceId === state.deviceId; }) || null;
+      }
+
+      function getSortedTrips() {
+        return Object.values(state.trips).sort(function (a, b) {
+          const sa = computeTripSeverity(a);
+          const sb = computeTripSeverity(b);
+          if (sb.weight !== sa.weight) return sb.weight - sa.weight;
+          return (a.etaEndsAt || 0) - (b.etaEndsAt || 0);
+        });
+      }
+
+      function updateConnectionUI() {
+        const vDot = document.getElementById('vecino-conn-dot');
+        const vTxt = document.getElementById('vecino-conn-text');
+        const vSub = document.getElementById('vecino-cloud-subline');
+        const vErrBar = document.getElementById('vecino-conn-error-banner');
+        const vErrTxt = document.getElementById('vecino-conn-error-text');
+
+        const sBadge = document.getElementById('staff-conn-badge');
+        const sErrBar = document.getElementById('staff-conn-error-bar');
+        const sErrTxt = document.getElementById('staff-conn-error-text');
+        const cStat = document.getElementById('cfg-firebase-status');
+
+        if (state.cloudStatus === 'online') {
+          vDot.className = 'w-2 h-2 rounded-full bg-safe';
+          vTxt.textContent = 'En línea (Nube)';
+          vSub.textContent = '🟢 En línea (Nube) • Villa Regina';
+          vSub.className = 'text-xs font-bold text-safe mt-0.5 truncate';
+          vErrBar.classList.add('hidden');
+
+          sBadge.className = 'px-2.5 py-1.5 rounded-xl bg-emerald-500/20 border border-emerald-400 text-emerald-200 text-xs font-black';
+          sBadge.textContent = '🟢 En línea (Nube)';
+          sErrBar.classList.add('hidden');
+
+          if (cStat) {
+            cStat.className = 'px-3 py-1.5 rounded-full bg-emerald-100 text-emerald-900 text-xs font-black self-start sm:self-center';
+            cStat.textContent = '🟢 En línea (Nube)';
+          }
+        } else if (state.cloudStatus === 'error') {
+          vDot.className = 'w-2 h-2 rounded-full bg-panic';
+          vTxt.textContent = 'Error Firebase';
+          vSub.textContent = '🔴 Sin conexión / Error Firebase';
+          vSub.className = 'text-xs font-bold text-panic mt-0.5 truncate';
+          vErrBar.classList.remove('hidden');
+          vErrTxt.textContent = '🔴 ' + (state.cloudErrorDetail || 'Sin conexión con Firebase.');
+
+          sBadge.className = 'px-2.5 py-1.5 rounded-xl bg-red-500/20 border border-red-400 text-red-200 text-xs font-black';
+          sBadge.textContent = '🔴 Error Firebase';
+          sErrBar.classList.remove('hidden');
+          sErrTxt.textContent = '🔴 ' + (state.cloudErrorDetail || 'Sin conexión / Error Firebase.');
+
+          if (cStat) {
+            cStat.className = 'px-3 py-1.5 rounded-full bg-red-100 text-panic text-xs font-black self-start sm:self-center';
+            cStat.textContent = '🔴 Sin conexión / Error Firebase';
+          }
+        } else {
+          vDot.className = 'w-2 h-2 rounded-full bg-warn';
+          vTxt.textContent = 'Conectando...';
+          sBadge.textContent = '⏳ Conectando...';
+        }
+      }
+
+      function applyConfigToUI() {
+        document.getElementById('vecino-inst-label').textContent = state.config.institutionName || 'Programa Vecinal • Jacinto';
+
+        const img = document.getElementById('jacinto-avatar-img');
+        const svg = document.getElementById('jacinto-avatar-svg');
+        if (state.config.jacintoPhotoUrl) {
+          if (img.src !== state.config.jacintoPhotoUrl) img.src = state.config.jacintoPhotoUrl;
+          img.classList.remove('hidden');
+          svg.classList.add('hidden');
+        } else {
+          img.classList.add('hidden');
+          svg.classList.remove('hidden');
+        }
+
+        const fUrl = document.getElementById('cfg-firebase-url');
+        if (fUrl && document.activeElement !== fUrl) fUrl.value = state.dbUrl;
+        const opC = document.getElementById('cfg-op-code');
+        if (opC && document.activeElement !== opC) opC.value = state.config.operatorCode;
+        const crC = document.getElementById('cfg-creator-code');
+        if (crC && document.activeElement !== crC) crC.value = state.config.creatorCode;
+        const inst = document.getElementById('cfg-inst-name');
+        if (inst && document.activeElement !== inst) inst.value = state.config.institutionName || '';
+        const pUrl = document.getElementById('cfg-jacinto-url');
+        if (pUrl && document.activeElement !== pUrl) pUrl.value = state.config.jacintoPhotoUrl || '';
+      }
+
+      function renderAll() {
+        renderVecinoProfile();
+        renderContacts();
+        renderVecinoActiveTrip();
+        renderVecinoHistory();
+        renderBarrioStats();
+        renderOperatorPanel();
+        if (state.authRole === 'creador' && state.staffPanel === 'admin') {
+          renderAdminPanel();
+        }
+      }
+
+      function renderVecinoProfile() {
+        document.getElementById('vecino-greeting').textContent = state.profile.name.trim()
+          ? state.profile.name.trim().split(' ')[0]
+          : 'Vecino/a';
+
+        const nEl = document.getElementById('p-name');
+        if (nEl && document.activeElement !== nEl) nEl.value = state.profile.name;
+        const bEl = document.getElementById('p-barrio');
+        if (bEl && document.activeElement !== bEl) bEl.value = state.profile.barrio || 'Barrio Este';
+        const wEl = document.getElementById('p-whatsapp');
+        if (wEl && document.activeElement !== wEl) wEl.value = state.profile.whatsapp;
+        const dEl = document.getElementById('p-dni');
+        if (dEl && document.activeElement !== dEl) dEl.value = state.profile.dni;
+      }
+
+      function renderContacts() {
+        const listEl = document.getElementById('v-contacts-list');
+        const hintEl = document.getElementById('home-no-contacts-hint');
+        if (hintEl) hintEl.classList.toggle('hidden', state.contacts.length > 0);
+
+        if (state.contacts.length === 0) {
+          listEl.innerHTML =
+            '<div class="rounded-3xl border-2 border-dashed border-gray-300 bg-gray-50 p-6 text-center space-y-1">' +
+              '<p class="text-base font-black text-ink">Todavía no tenés contactos cargados</p>' +
+              '<p class="text-xs font-semibold text-gray-600">Agregá a tu familia o personas de confianza abajo.</p>' +
+            '</div>';
+          return;
+        }
+
+        listEl.innerHTML = state.contacts.map(function (c, idx) {
+          return (
+            '<div class="rounded-3xl border-2 border-ink bg-white p-4 flex items-center justify-between gap-2">' +
+              '<div class="min-w-0">' +
+                '<div class="flex items-center gap-2 flex-wrap">' +
+                  '<span class="px-2 py-0.5 rounded-full ' + (idx === 0 ? 'bg-panic text-white' : 'bg-ink text-white') + ' text-[10px] font-black uppercase">Prioridad ' + (idx + 1) + '</span>' +
+                  '<h4 class="text-base font-black text-ink truncate">' + escapeHtml(c.name) + '</h4>' +
+                '</div>' +
+                '<p class="text-xs font-bold text-gray-600 mt-1">' + escapeHtml(c.relation) + ' • ' + escapeHtml(c.phone) + '</p>' +
+              '</div>' +
+              '<div class="flex items-center gap-1 shrink-0">' +
+                '<button type="button" onclick="App.moveContact(' + idx + ', -1)" ' + (idx === 0 ? 'disabled' : '') + ' title="Subir prioridad" class="w-9 h-9 rounded-xl border border-gray-300 font-black text-xs ' + (idx === 0 ? 'opacity-30' : 'hover:bg-gray-100') + '">▲</button>' +
+                '<button type="button" onclick="App.moveContact(' + idx + ', 1)" ' + (idx === state.contacts.length - 1 ? 'disabled' : '') + ' title="Bajar prioridad" class="w-9 h-9 rounded-xl border border-gray-300 font-black text-xs ' + (idx === state.contacts.length - 1 ? 'opacity-30' : 'hover:bg-gray-100') + '">▼</button>' +
+                '<button type="button" onclick="App.deleteContact(' + idx + ')" title="Eliminar" class="w-9 h-9 rounded-xl border border-red-200 bg-red-50 text-panic font-black text-xs">🗑️</button>' +
+              '</div>' +
+            '</div>'
+          );
+        }).join('');
+      }
+
+      function renderVecinoActiveTrip() {
+        const trip = getMyActiveTrip();
+        const idle = document.getElementById('vecino-idle-view');
+        const form = document.getElementById('vecino-start-form');
+        const active = document.getElementById('vecino-active-view');
+
+        if (!trip) {
+          active.classList.add('hidden');
+          if (form.classList.contains('hidden')) idle.classList.remove('hidden');
+          return;
+        }
+
+        idle.classList.add('hidden');
+        form.classList.add('hidden');
+        active.classList.remove('hidden');
+
+        const sev = computeTripSeverity(trip);
+        const badge = document.getElementById('v-active-badge');
+        if (sev.level === 'panic' || sev.level === 'red') {
+          badge.className = 'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-panic text-white text-xs font-black uppercase';
+          badge.textContent = '● ' + sev.label;
+        } else if (sev.level === 'yellow') {
+          badge.className = 'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-warn text-ink text-xs font-black uppercase';
+          badge.textContent = '● ' + sev.label;
+        } else {
+          badge.className = 'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-safe text-white text-xs font-black uppercase';
+          badge.textContent = '● EN VIAJE';
+        }
+
+        document.getElementById('v-active-mode').textContent = trip.mode;
+        document.getElementById('v-active-dest').textContent = trip.destination;
+        document.getElementById('v-active-barrio').textContent = trip.barrio;
+
+        const cd = formatCountdown(trip.etaEndsAt);
+        const cdEl = document.getElementById('v-active-countdown');
+        cdEl.textContent = cd.big;
+        cdEl.className = cd.overdue
+          ? 'text-4xl font-black tracking-tight text-panic tabular-nums my-1'
+          : 'text-5xl font-black tracking-tight text-ink tabular-nums my-1';
+
+        const hasGps = typeof trip.lat === 'number' && typeof trip.lng === 'number';
+        document.getElementById('v-gps-status-label').textContent = hasGps ? '📡 Compartiendo GPS en vivo' : state.gpsStateText;
+        document.getElementById('v-gps-coords').textContent = hasGps
+          ? trip.lat + ', ' + trip.lng + (trip.gpsAccuracy ? ' (±' + trip.gpsAccuracy + 'm)' : '')
+          : 'Esperando señal o permiso de ubicación...';
+
+        // Alerta visual si hay mensajes nuevos del operador
+        const opMsgs = Object.values(trip.messages || {}).filter(function (m) { return m.sender === 'operator'; });
+        updateVecinoUnreadBadge(opMsgs.length > state.lastReadOpMsgCount);
+
+        renderChats();
+      }
+
+      function renderVecinoHistory() {
+        const el = document.getElementById('v-my-history-list');
+        if (state.myHistory.length === 0) {
+          el.innerHTML =
+            '<div class="rounded-3xl border-2 border-dashed border-gray-300 p-6 text-center text-sm font-bold text-gray-500">' +
+              'Todavía no tenés recorridos finalizados. Cuando toques "Llegué bien" se listarán acá sin guardar rutas GPS.' +
+            '</div>';
+          return;
+        }
+        el.innerHTML = state.myHistory.map(function (h) {
+          return (
+            '<div class="rounded-2xl border-2 border-ink bg-white p-4 flex items-center justify-between gap-3">' +
+              '<div>' +
+                '<p class="text-base font-black text-ink">' + escapeHtml(h.barrio) + '</p>' +
+                '<p class="text-xs font-bold text-gray-600">' + escapeHtml(h.fecha) + ' • ' + escapeHtml(h.hora) + ' hs • ' + escapeHtml(h.modo) + '</p>' +
+              '</div>' +
+              '<span class="px-3 py-1 rounded-full bg-emerald-50 border border-safe text-safe text-xs font-black shrink-0">✓ ' + escapeHtml(h.resultado) + '</span>' +
+            '</div>'
+          );
+        }).join('');
+      }
+
+      function renderBarrioStats() {
+        const el = document.getElementById('v-barrio-stats');
+        const records = Object.values(state.stats);
+        if (records.length === 0) {
+          el.innerHTML =
+            '<div class="py-6 text-center space-y-1.5">' +
+              '<p class="text-3xl">🏘️</p>' +
+              '<p class="text-base font-black text-ink">Sin registros todavía</p>' +
+              '<p class="text-xs font-semibold text-gray-600">Cuando se completen acompañamientos reales en Villa Regina, verás acá el resumen anónimo por barrio.</p>' +
+            '</div>';
+          return;
+        }
+
+        const counts = {};
+        records.forEach(function (r) { counts[r.barrio] = (counts[r.barrio] || 0) + 1; });
+        const sorted = Object.entries(counts).sort(function (a, b) { return b[1] - a[1]; });
+        const max = sorted[0][1] || 1;
+
+        el.innerHTML = sorted.map(function (entry) {
+          const barrio = entry[0];
+          const count = entry[1];
+          const pct = Math.round((count / max) * 100);
+          return (
+            '<div class="space-y-1">' +
+              '<div class="flex items-center justify-between text-sm font-extrabold">' +
+                '<span>' + escapeHtml(barrio) + '</span>' +
+                '<span>' + count + ' ' + (count === 1 ? 'acompañamiento' : 'acompañamientos') + '</span>' +
+              '</div>' +
+              '<div class="w-full h-3 bg-gray-100 rounded-full overflow-hidden">' +
+                '<div class="h-full bg-ink rounded-full" style="width:' + pct + '%"></div>' +
+              '</div>' +
+            '</div>'
+          );
+        }).join('');
+      }
+
+      function renderChats() {
+        // Chat del Vecino
+        const myTrip = getMyActiveTrip();
+        const vChat = document.getElementById('v-chat-list');
+        if (vChat && myTrip) {
+          const msgs = Object.values(myTrip.messages || {}).sort(function (a, b) { return (a.timestamp || 0) - (b.timestamp || 0); });
+          vChat.innerHTML = msgs.length === 0
+            ? '<p class="text-xs text-gray-500 text-center py-4 font-semibold">El operador puede escribirte acá en tiempo real.</p>'
+            : msgs.map(function (m) {
+                const mine = m.sender === 'vecino';
+                return (
+                  '<div class="flex ' + (mine ? 'justify-end' : 'justify-start') + '">' +
+                    '<div class="max-w-[85%] rounded-2xl px-3.5 py-2 text-sm font-semibold ' + (mine ? 'bg-ink text-white' : 'bg-white border-2 border-ink text-ink') + '">' +
+                      '<span class="block text-[10px] font-black uppercase opacity-70 mb-0.5">' + (mine ? 'Vos' : 'Operador') + '</span>' +
+                      escapeHtml(m.text) +
+                    '</div>' +
+                  '</div>'
+                );
+              }).join('');
+          if (msgs.length !== state.lastVecinoChatCount) {
+            state.lastVecinoChatCount = msgs.length;
+            vChat.scrollTop = vChat.scrollHeight;
+          }
+        }
+
+        // Chat del Operador
+        const opChat = document.getElementById('op-chat-list');
+        const sel = state.selectedTripId ? state.trips[state.selectedTripId] : null;
+        if (opChat && sel) {
+          const msgs = Object.values(sel.messages || {}).sort(function (a, b) { return (a.timestamp || 0) - (b.timestamp || 0); });
+          opChat.innerHTML = msgs.length === 0
+            ? '<p class="text-xs text-gray-500 text-center py-6 font-semibold">Sin mensajes todavía. Escribile al vecino abajo.</p>'
+            : msgs.map(function (m) {
+                const isOp = m.sender === 'operator';
+                return (
+                  '<div class="flex ' + (isOp ? 'justify-end' : 'justify-start') + '">' +
+                    '<div class="max-w-[85%] rounded-2xl px-3.5 py-2 text-xs sm:text-sm font-semibold ' + (isOp ? 'bg-ink text-white' : 'bg-white border-2 border-gray-300 text-ink') + '">' +
+                      '<span class="block text-[10px] font-black uppercase opacity-70 mb-0.5">' + (isOp ? 'Centro' : escapeHtml(sel.neighborName)) + '</span>' +
+                      escapeHtml(m.text) +
+                    '</div>' +
+                  '</div>'
+                );
+              }).join('');
+          if (msgs.length !== state.lastOpChatCount) {
+            state.lastOpChatCount = msgs.length;
+            opChat.scrollTop = opChat.scrollHeight;
+          }
+        }
+      }
+
+      function renderOperatorPanel() {
+        const sorted = getSortedTrips();
+        let cRed = 0, cYel = 0, cGrn = 0;
+        sorted.forEach(function (t) {
+          const lv = computeTripSeverity(t).level;
+          if (lv === 'panic' || lv === 'red') cRed++;
+          else if (lv === 'yellow') cYel++;
+          else cGrn++;
+        });
+
+        document.getElementById('op-stat-red').textContent = cRed + ' Pánico / Rojas';
+        document.getElementById('op-stat-yellow').textContent = cYel + ' Amarillas';
+        document.getElementById('op-stat-green').textContent = cGrn + ' En viaje';
+
+        const activeBadge = document.getElementById('op-active-count-badge');
+        if (activeBadge) {
+          activeBadge.textContent = String(sorted.length);
+          activeBadge.classList.toggle('hidden', sorted.length === 0);
+        }
+
+        const syncTxt = document.getElementById('op-last-sync-text');
+        if (syncTxt && state.lastSyncAt) {
+          syncTxt.textContent = 'Sync ' + new Date(state.lastSyncAt).toTimeString().slice(0, 8);
+        }
+
+        const queueEl = document.getElementById('op-queue-list');
+        if (sorted.length === 0) {
+          queueEl.innerHTML =
+            '<div class="rounded-2xl border-2 border-dashed border-gray-300 p-6 text-center text-sm font-bold text-gray-500">' +
+              'Sin vecinos activos en este momento.' +
+            '</div>';
+        } else {
+          queueEl.innerHTML = sorted.map(function (t) {
+            const sev = computeTripSeverity(t);
+            const cd = formatCountdown(t.etaEndsAt);
+            const isSel = t.id === state.selectedTripId;
+            const isCrit = sev.level === 'panic' || sev.level === 'red';
+            const isYel = sev.level === 'yellow';
+
+            const pill = isCrit
+              ? '<span class="px-2 py-0.5 rounded-full bg-panic text-white text-[10px] font-black uppercase">' + (sev.level === 'panic' ? '🚨 PÁNICO' : 'ROJA') + '</span>'
+              : isYel
+                ? '<span class="px-2 py-0.5 rounded-full bg-warn text-ink text-[10px] font-black uppercase">' + sev.label + '</span>'
+                : '<span class="px-2 py-0.5 rounded-full bg-safe text-white text-[10px] font-black uppercase">EN VIAJE</span>';
+
+            const border = isSel
+              ? 'border-ink ring-2 ring-ink bg-gray-50'
+              : isCrit ? 'border-panic bg-red-50/50'
+              : isYel ? 'border-warn bg-amber-50/40'
+              : 'border-gray-300 bg-white';
+
+            return (
+              '<button type="button" onclick="App.selectOperatorTrip(\'' + t.id + '\', true)" class="w-full text-left rounded-2xl border-2 p-3.5 transition ' + border + '">' +
+                '<div class="flex items-center justify-between gap-2 mb-1">' +
+                  '<span class="font-black text-base text-ink truncate">' + escapeHtml(t.neighborName) + '</span>' +
+                  pill +
+                '</div>' +
+                '<p class="text-xs font-bold text-gray-700 truncate">' + escapeHtml(t.barrio) + ' → ' + escapeHtml(t.destination) + '</p>' +
+                '<p class="text-xs font-extrabold mt-0.5 ' + (cd.overdue ? 'text-panic' : 'text-gray-600') + '">' +
+                  escapeHtml(t.mode) + ' • <span data-op-cd="' + t.id + '">' + cd.short + '</span>' +
+                '</p>' +
+                (sev.reason ? '<p class="mt-1 text-[11px] font-extrabold ' + (isCrit ? 'text-panic' : 'text-amber-800') + '">⚠ ' + escapeHtml(sev.reason) + '</p>' : '') +
+              '</button>'
+            );
+          }).join('');
+        }
+
+        renderOperatorDetail();
+        if (state.authRole !== 'vecino' && state.staffPanel === 'operador') {
+          renderOperatorMapMarkers();
+        }
+      }
+
+      function renderOperatorDetail() {
+        const sel = state.selectedTripId ? state.trips[state.selectedTripId] : null;
+        const emptyBox = document.getElementById('op-no-selection');
+        const assistBox = document.getElementById('op-assist-panel');
+
+        if (!sel) {
+          emptyBox.classList.remove('hidden');
+          assistBox.classList.add('hidden');
+          return;
+        }
+
+        emptyBox.classList.add('hidden');
+        assistBox.classList.remove('hidden');
+
+        const sev = computeTripSeverity(sel);
+        const cd = formatCountdown(sel.etaEndsAt);
+
+        document.getElementById('op-sel-name').textContent = sel.neighborName;
+        const badge = document.getElementById('op-sel-badge');
+        badge.textContent = sev.label;
+        badge.className = (sev.level === 'panic' || sev.level === 'red')
+          ? 'px-2.5 py-1 rounded-full bg-panic text-white text-xs font-black uppercase'
+          : sev.level === 'yellow'
+            ? 'px-2.5 py-1 rounded-full bg-warn text-ink text-xs font-black uppercase'
+            : 'px-2.5 py-1 rounded-full bg-safe text-white text-xs font-black uppercase';
+
+        document.getElementById('op-sel-details').textContent = sel.barrio + ' • Destino: ' + sel.destination + ' • ' + sel.mode;
+        document.getElementById('op-sel-timer-line').textContent = cd.short + (sev.reason ? ' — ' + sev.reason : '');
+
+        // Audio real de 10 segundos (evita reiniciar reproducción en cada polling)
+        const audioCard = document.getElementById('op-panic-audio-card');
+        const audioEl = document.getElementById('op-audio-player');
+        const audioHint = document.getElementById('op-audio-hint');
+        const audioPill = document.getElementById('op-audio-status-pill');
+
+        if (sel.panic) {
+          audioCard.classList.remove('hidden');
+          if (sel.audioStatus === 'ready' && sel.audioDataUrl) {
+            audioPill.textContent = 'AUDIO LISTO';
+            audioPill.className = 'px-2 py-0.5 rounded-full bg-safe text-white text-[10px] font-black uppercase';
+            audioHint.textContent = 'Audio ambiental de 10 segundos recibido en vivo:';
+            if (audioEl.getAttribute('data-loaded-src') !== sel.audioDataUrl) {
+              audioEl.src = sel.audioDataUrl;
+              audioEl.setAttribute('data-loaded-src', sel.audioDataUrl);
+            }
+            audioEl.classList.remove('hidden');
+          } else if (sel.audioStatus === 'unavailable') {
+            audioPill.textContent = 'SIN MICRÓFONO';
+            audioPill.className = 'px-2 py-0.5 rounded-full bg-gray-700 text-white text-[10px] font-black uppercase';
+            audioHint.textContent = 'El celular del vecino no otorgó permiso de micrófono para grabar audio.';
+            audioEl.classList.add('hidden');
+          } else {
+            audioPill.textContent = 'GRABANDO 10S...';
+            audioPill.className = 'px-2 py-0.5 rounded-full bg-panic text-white text-[10px] font-black uppercase';
+            audioHint.textContent = 'Grabando audio de 10s en el celular del vecino... aparecerá automáticamente aquí.';
+            audioEl.classList.add('hidden');
+          }
+        } else {
+          audioCard.classList.add('hidden');
+        }
+
+        // GPS y Google Maps
+        const hasGps = typeof sel.lat === 'number' && typeof sel.lng === 'number';
+        const gmapsUrl = hasGps ? getGoogleMapsUrl(sel.lat, sel.lng) : '';
+        document.getElementById('op-sel-gps-text').textContent = hasGps
+          ? sel.lat + ', ' + sel.lng + (sel.gpsAccuracy ? ' (±' + sel.gpsAccuracy + 'm)' : '')
+          : 'Sin coordenadas GPS disponibles todavía';
+
+        const gmapsLink = document.getElementById('op-sel-gmaps-link');
+        if (hasGps) {
+          gmapsLink.href = gmapsUrl;
+          gmapsLink.classList.remove('opacity-40', 'pointer-events-none');
+        } else {
+          gmapsLink.href = '#';
+          gmapsLink.classList.add('opacity-40', 'pointer-events-none');
+        }
+
+        // Llamar y WhatsApp al Vecino
+        const normV = normalizeArgPhone(sel.whatsapp);
+        const btnCallV = document.getElementById('op-btn-call-vecino');
+        const btnWaV = document.getElementById('op-btn-wa-vecino');
+        if (normV.telHref) {
+          btnCallV.href = normV.telHref;
+          btnCallV.classList.remove('opacity-40', 'pointer-events-none');
+        } else {
+          btnCallV.href = '#';
+          btnCallV.classList.add('opacity-40', 'pointer-events-none');
+        }
+        if (normV.waNumber) {
+          btnWaV.href = buildWhatsAppLink(sel.whatsapp, 'Hola ' + sel.neighborName + ', te escribimos del Centro de Monitoreo Acompañame Villa Regina. ¿Estás bien?');
+          btnWaV.classList.remove('opacity-40', 'pointer-events-none');
+        } else {
+          btnWaV.href = '#';
+          btnWaV.classList.add('opacity-40', 'pointer-events-none');
+        }
+
+        // Contactos de Emergencia reales del Vecino
+        const contactsWrap = document.getElementById('op-sel-contacts');
+        const contactsArr = Array.isArray(sel.contacts) ? sel.contacts : [];
+        if (contactsArr.length === 0) {
+          contactsWrap.innerHTML =
+            '<p class="text-xs font-semibold text-gray-500 bg-gray-50 border border-gray-200 rounded-2xl p-3">' +
+              'Este vecino todavía no cargó contactos de emergencia.' +
+            '</p>';
+        } else {
+          contactsWrap.innerHTML = contactsArr.map(function (c, idx) {
+            const pNum = c.priority || (idx + 1);
+            const normC = normalizeArgPhone(c.phone);
+            const locText = hasGps ? ' Ubicación actual: ' + gmapsUrl : '';
+            const waMsg = 'ALERTA Centro de Monitoreo Acompañame (Villa Regina): nos comunicamos por ' +
+              sel.neighborName + ' (Barrio: ' + sel.barrio + ', Destino: ' + sel.destination + '). Estado: ' + sev.label + '.' + locText;
+            const safeLabel = escapeHtml(c.name + ' (' + (c.relation || 'Contacto') + ')').replace(/'/g, '');
+            return (
+              '<div class="rounded-2xl border-2 ' + (pNum === 1 ? 'border-panic bg-red-50/40' : 'border-gray-200 bg-gray-50') + ' p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">' +
+                '<div class="min-w-0">' +
+                  '<div class="flex items-center gap-2 flex-wrap">' +
+                    '<span class="px-2 py-0.5 rounded-full ' + (pNum === 1 ? 'bg-panic text-white' : 'bg-ink text-white') + ' text-[10px] font-black uppercase">PRIORIDAD ' + pNum + '</span>' +
+                    '<span class="text-sm font-black text-ink truncate">' + escapeHtml(c.name) + '</span>' +
+                    '<span class="text-xs font-bold text-gray-600">(' + escapeHtml(c.relation || 'Contacto') + ')</span>' +
+                  '</div>' +
+                  '<p class="text-xs font-mono font-bold text-gray-700 mt-0.5">' + escapeHtml(c.phone) + '</p>' +
+                '</div>' +
+                '<div class="flex gap-2 shrink-0">' +
+                  '<a href="' + (normC.telHref || '#') + '" onclick="App.logDerivation(\'Llamada a contacto P' + pNum + ': ' + safeLabel + '\')" class="min-h-[44px] px-3.5 rounded-xl bg-ink text-white font-black text-xs flex items-center justify-center gap-1">📞 Llamar</a>' +
+                  '<a href="' + buildWhatsAppLink(c.phone, waMsg) + '" target="_blank" rel="noopener noreferrer" onclick="App.logDerivation(\'WhatsApp a contacto P' + pNum + ': ' + safeLabel + '\')" class="min-h-[44px] px-3.5 rounded-xl bg-safe text-white font-black text-xs flex items-center justify-center gap-1">💬 WhatsApp</a>' +
+                '</div>' +
+              '</div>'
+            );
+          }).join('');
+        }
+
+        // Eventos / derivaciones de este viaje
+        const evtsWrap = document.getElementById('op-trip-events');
+        const evts = Object.values(sel.events || {}).sort(function (a, b) { return (b.timestamp || 0) - (a.timestamp || 0); });
+        evtsWrap.innerHTML = evts.length === 0
+          ? '<p class="text-xs text-gray-500 font-semibold">Sin derivaciones registradas en este viaje todavía.</p>'
+          : evts.map(function (ev) {
+              return (
+                '<div class="rounded-xl bg-gray-50 border border-gray-200 px-3 py-2 flex items-center justify-between gap-2">' +
+                  '<span class="font-bold text-ink">' + escapeHtml(ev.action) + ' <span class="text-gray-500">(' + escapeHtml(ev.operator) + ')</span></span>' +
+                  '<span class="font-mono text-[11px] font-black text-gray-600 shrink-0">' + escapeHtml(ev.timeStr) + '</span>' +
+                '</div>'
+              );
+            }).join('');
+
+        renderChats();
+      }
+
+      // =======================================================================
+      // PANEL ADMIN / CREADOR (ESTADÍSTICAS REALES + CHART.JS CON TRY/CATCH)
+      // =======================================================================
+      function renderAdminPanel() {
+        applyConfigToUI();
+        updateConnectionUI();
+
+        const statsArr = Object.values(state.stats);
+        const activeArr = Object.values(state.trips);
+        const total = statsArr.length + activeArr.length;
+        const okCount = statsArr.filter(function (h) { return h.resultado === 'Llegó bien'; }).length;
+        const okPct = statsArr.length > 0 ? Math.round((okCount / statsArr.length) * 100) : 0;
+        const alertsCount = statsArr.filter(function (h) { return h.hadAlert; }).length
+          + activeArr.filter(function (t) {
+              const lv = computeTripSeverity(t).level;
+              return lv === 'panic' || lv === 'red';
+            }).length;
+
+        document.getElementById('kpi-total').textContent = String(total);
+        document.getElementById('kpi-ok').textContent = String(okCount);
+        document.getElementById('kpi-ok-pct').textContent = statsArr.length > 0 ? okPct + '% de cerrados' : '0% de cerrados';
+        document.getElementById('kpi-alerts').textContent = String(alertsCount);
+        document.getElementById('kpi-active').textContent = String(activeArr.length);
+
+        renderAdminCharts(statsArr, activeArr);
+        renderAdminLogs();
+      }
+
+      function renderAdminCharts(statsArr, activeArr) {
+        const allItems = statsArr.map(function (h) {
+          return { barrio: h.barrio, hourNum: h.hourNum };
+        }).concat(activeArr.map(function (t) {
+          return { barrio: t.barrio, hourNum: new Date(t.startedAt || Date.now()).getHours() };
+        }));
+
+        const emptyB = document.getElementById('chart-barrio-empty');
+        const wrapB = document.getElementById('chart-barrio-wrap');
+        const emptyH = document.getElementById('chart-hora-empty');
+        const wrapH = document.getElementById('chart-hora-wrap');
+
+        if (allItems.length === 0 || typeof Chart === 'undefined') {
+          emptyB.classList.remove('hidden'); wrapB.classList.add('hidden');
+          emptyH.classList.remove('hidden'); wrapH.classList.add('hidden');
+          try {
+            if (state.chartBarrios) { state.chartBarrios.destroy(); state.chartBarrios = null; }
+            if (state.chartHorarios) { state.chartHorarios.destroy(); state.chartHorarios = null; }
+          } catch (e) {}
+          return;
+        }
+
+        emptyB.classList.add('hidden'); wrapB.classList.remove('hidden');
+        emptyH.classList.add('hidden'); wrapH.classList.remove('hidden');
+
+        try {
+          const bCounts = {};
+          allItems.forEach(function (it) { bCounts[it.barrio] = (bCounts[it.barrio] || 0) + 1; });
+          const bEntries = Object.entries(bCounts).sort(function (a, b) { return b[1] - a[1]; });
+
+          if (state.chartBarrios) state.chartBarrios.destroy();
+          state.chartBarrios = new Chart(document.getElementById('canvas-barrios'), {
+            type: 'bar',
+            data: {
+              labels: bEntries.map(function (x) { return x[0]; }),
+              datasets: [{
+                label: 'Acompañamientos',
+                data: bEntries.map(function (x) { return x[1]; }),
+                backgroundColor: bEntries.map(function (_, i) { return i === 0 ? '#DC2626' : '#111827'; }),
+                borderRadius: 8
+              }]
+            },
+            options: {
+              indexAxis: 'y',
+              responsive: true,
+              maintainAspectRatio: false,
+              plugins: { legend: { display: false } },
+              scales: { x: { beginAtZero: true, ticks: { stepSize: 1 } } }
+            }
+          });
+
+          const slots = [
+            { label: '00-06h', min: 0, max: 5, count: 0 },
+            { label: '06-10h', min: 6, max: 9, count: 0 },
+            { label: '10-14h', min: 10, max: 13, count: 0 },
+            { label: '14-18h', min: 14, max: 17, count: 0 },
+            { label: '18-21h', min: 18, max: 20, count: 0 },
+            { label: '21-00h', min: 21, max: 23, count: 0 }
+          ];
+          allItems.forEach(function (it) {
+            const hr = typeof it.hourNum === 'number' ? it.hourNum : 0;
+            const s = slots.find(function (x) { return hr >= x.min && hr <= x.max; });
+            if (s) s.count++;
+          });
+          const maxS = Math.max.apply(null, [1].concat(slots.map(function (s) { return s.count; })));
+
+          if (state.chartHorarios) state.chartHorarios.destroy();
+          state.chartHorarios = new Chart(document.getElementById('canvas-horarios'), {
+            type: 'bar',
+            data: {
+              labels: slots.map(function (s) { return s.label; }),
+              datasets: [{
+                label: 'Pedidos',
+                data: slots.map(function (s) { return s.count; }),
+                backgroundColor: slots.map(function (s) { return (s.count === maxS && s.count > 0) ? '#DC2626' : '#111827'; }),
+                borderRadius: 8
+              }]
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              plugins: { legend: { display: false } },
+              scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } }
+            }
+          });
+        } catch (err) {}
+      }
+
+      function renderAdminLogs() {
+        const el = document.getElementById('admin-logs-list');
+        if (!el) return;
+        const arr = Object.values(state.logs).sort(function (a, b) { return (b.createdAt || 0) - (a.createdAt || 0); }).slice(0, 40);
+        if (arr.length === 0) {
+          el.innerHTML = '<p class="text-xs font-semibold text-gray-500">Sin registros de accesos o derivaciones todavía.</p>';
+          return;
+        }
+        el.innerHTML = arr.map(function (l) {
+          return (
+            '<div class="rounded-xl bg-gray-50 border border-gray-200 px-3 py-2 flex items-start justify-between gap-2">' +
+              '<div class="min-w-0">' +
+                '<span class="px-1.5 py-0.5 rounded bg-ink text-white text-[10px] font-black uppercase mr-1">' + escapeHtml(l.type) + '</span>' +
+                '<span class="font-bold text-ink">' + escapeHtml(l.detail) + '</span>' +
+                '<span class="block text-[11px] text-gray-500 font-semibold">Por: ' + escapeHtml(l.operator) + '</span>' +
+              '</div>' +
+              '<span class="font-mono text-[10px] font-bold text-gray-600 shrink-0">' + escapeHtml(l.dateStr) + ' ' + escapeHtml(l.timeStr) + '</span>' +
+            '</div>'
+          );
+        }).join('');
+      }
+
+      // =======================================================================
+      // TOASTS Y MODALES PERSONALIZADOS
+      // =======================================================================
+      function showToast(message, tone) {
+        const container = document.getElementById('toast-container');
+        const el = document.createElement('div');
+        const styles = {
+          dark: 'bg-ink text-white border-black',
+          green: 'bg-safe text-white border-emerald-900',
+          amber: 'bg-warn text-ink border-amber-700',
+          red: 'bg-panic text-white border-red-900'
+        };
+        el.className = 'pointer-events-auto rounded-2xl border-2 px-4 py-3 text-sm font-extrabold shadow-xl transition-all duration-300 ' + (styles[tone] || styles.dark);
+        el.textContent = message;
+        container.appendChild(el);
+        setTimeout(function () {
+          el.style.opacity = '0';
+          el.style.transform = 'translateY(-8px)';
+          setTimeout(function () { el.remove(); }, 300);
+        }, 3200);
+      }
+
+      function showModal(cfg) {
+        const modal = document.getElementById('app-modal');
+        document.getElementById('app-modal-title').textContent = cfg.title;
+        document.getElementById('app-modal-body').textContent = cfg.body;
+        const wrap = document.getElementById('app-modal-actions');
+        wrap.innerHTML = '';
+        (cfg.actions || []).forEach(function (act) {
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = act.className || 'min-h-[46px] px-4 rounded-2xl bg-ink text-white font-black text-sm';
+          btn.textContent = act.label;
+          btn.onclick = function () {
+            modal.classList.add('hidden');
+            if (act.onClick) act.onClick();
+          };
+          wrap.appendChild(btn);
+        });
+        modal.classList.remove('hidden');
+      }
+
+      // =======================================================================
+      // RELOJ EN VIVO CADA 1 SEGUNDO
+      // =======================================================================
+      setInterval(function () {
+        const myTrip = getMyActiveTrip();
+        if (myTrip) {
+          const el = document.getElementById('v-active-countdown');
+          if (el) el.textContent = formatCountdown(myTrip.etaEndsAt).big;
+        }
+        Object.values(state.trips).forEach(function (t) {
+          const span = document.querySelector('[data-op-cd="' + t.id + '"]');
+          if (span) span.textContent = formatCountdown(t.etaEndsAt).short;
+        });
+      }, 1000);
+
+      // =======================================================================
+      // API GLOBAL E INICIALIZACIÓN
+      // =======================================================================
+      window.App = {
+        openAccessModal: openAccessModal,
+        closeAccessModal: closeAccessModal,
+        toggleAccessPassword: toggleAccessPassword,
+        submitAccessCode: submitAccessCode,
+        switchStaffPanel: switchStaffPanel,
+        logoutStaff: logoutStaff,
+        manualSyncNow: manualSyncNow,
+        toggleOperatorMute: toggleOperatorMute,
+        focusMostCriticalTrip: focusMostCriticalTrip,
+        switchVecinoTab: switchVecinoTab,
+        saveProfile: saveProfile,
+        addContact: addContact,
+        moveContact: moveContact,
+        deleteContact: deleteContact,
+        openStartTripForm: openStartTripForm,
+        closeStartTripForm: closeStartTripForm,
+        selectTripMode: selectTripMode,
+        selectTripEta: selectTripEta,
+        updateStartTripBtn: updateStartTripBtn,
+        confirmStartTrip: confirmStartTrip,
+        forceGpsUpdate: forceGpsUpdate,
+        vecinoCompleteTrip: vecinoCompleteTrip,
+        triggerSilentPanic: triggerSilentPanic,
+        hideSilentPanicBox: hideSilentPanicBox,
+        markVecinoChatRead: markVecinoChatRead,
+        handleVecinoChatForm: handleVecinoChatForm,
+        sendVecinoChat: sendVecinoChat,
+        selectOperatorTrip: selectOperatorTrip,
+        handleOperatorChatForm: handleOperatorChatForm,
+        sendOperatorChat: sendOperatorChat,
+        logDerivation: logDerivation,
+        operatorCloseTrip: operatorCloseTrip,
+        confirmOperatorCancelTrip: confirmOperatorCancelTrip,
+        recenterOperatorMap: recenterOperatorMap,
+        testAndSaveFirebase: testAndSaveFirebase,
+        downloadApkReadyHtml: downloadApkReadyHtml,
+        saveSecurityConfig: saveSecurityConfig,
+        confirmResetTrips: confirmResetTrips,
+        confirmResetStats: confirmResetStats
+      };
+
+      window.addEventListener('DOMContentLoaded', function () {
+        loadVecinoLocalData();
+        state.dbUrl = resolveFirebaseUrl();
+        applyConfigToUI();
+        updateConnectionUI();
+        renderAll();
+        startCloudPolling();
+
+        if (state.myActiveTripId) {
+          startGpsTracking(state.myActiveTripId);
+        }
+      });
+    })();
+  </script>
+</body>
+</html>
